@@ -76,6 +76,19 @@ check("fork bomb capped by pids.max=16", run("forkbomb"), "OK",
       lambda r: 0 < int(r["stdout"].strip() or 0) < 16)
 check("64 MiB output with --output 1M", run("bigout", extra=["--output", "1M"]), "OLE")
 
+exp = os.path.join(build, "exported.bin")
+for n in ("exported.bin", "evil1", "evil2"):
+    try: os.unlink(os.path.join(build, n))
+    except FileNotFoundError: pass
+r = run("export_ok", extra=["--export", f"/box/out.bin:{exp}"])
+check("--export copies a produced file out", r, "OK",
+      lambda r: r.get("exported") and open(exp).read() == "artifact\n")
+r = run("export_symlink", extra=["--no-seccomp", "--export", f"/box/link:{build}/evil1",
+                                 "--export", f"/box/d/x/passwd:{build}/evil2"])
+check("--export refuses symlinks (seccomp off)", r, "OK",
+      lambda r: not r.get("exported") and not os.path.exists(f"{build}/evil1")
+      and not os.path.exists(f"{build}/evil2"))
+
 r = run("probe")
 facts = dict(l.split("=", 1) for l in r["stdout"].splitlines() if "=" in l)
 want = {"uid": "65534", "pid": "2", "hostname": "runbox", "net_ifaces": "1",
