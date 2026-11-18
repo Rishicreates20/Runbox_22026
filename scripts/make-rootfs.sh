@@ -35,7 +35,7 @@ copy_with_libs() {
     [[ -e $lib ]] || continue
     mkdir -p "$out$(dirname "$lib")"
     cp -L --update=none "$lib" "$out$lib" 2>/dev/null || true
-  done
+  done || true  # static binaries: ldd lists nothing, grep exits 1 under pipefail
 }
 
 copy_with_libs /bin/sh
@@ -51,7 +51,7 @@ done
 libs_of() {
   ldd "$1" 2>/dev/null | grep -oE '/[^ ]+' | while read -r lib; do
     if [[ -e $lib && ! -e $out$lib ]]; then mkdir -p "$out$(dirname "$lib")"; cp -L "$lib" "$out$lib"; fi
-  done
+  done || true  # static binaries: ldd lists nothing, grep exits 1 under pipefail
 }
 
 if (( gcc )); then
@@ -85,9 +85,9 @@ if [[ -n $python ]]; then
       --exclude=site-packages --exclude=dist-packages --exclude=__pycache__ \
       --exclude=tkinter --exclude=ensurepip -cf - . | tar -C "$out$libdir" -xf -
   for so in "$out$libdir"/lib-dynload/*.so; do
-    ldd "$so" 2>/dev/null | grep -oE '/[^ ]+' | while read -r lib; do
-      [[ -e $lib && ! -e $out$lib ]] && { mkdir -p "$out$(dirname "$lib")"; cp -L "$lib" "$out$lib"; }
-    done
+    # Some extensions are statically linked: ldd prints no paths, grep exits 1,
+    # and pipefail would end the script. libs_of tolerates that.
+    libs_of "$so"
   done
   echo "python $ver installed at /usr/bin/python3"
 fi
