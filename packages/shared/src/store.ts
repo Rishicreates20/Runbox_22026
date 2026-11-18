@@ -3,6 +3,7 @@ import type { Sql } from "postgres";
 import type { SubmissionId } from "./ids.ts";
 import type { Language } from "./languages.ts";
 import { normalizeNewlines, type NormalizedProblem } from "./problem.ts";
+import type { PaperCreate } from "./paper.ts";
 import {
   EVENT_LOG_TTL_SECONDS, JudgeJob, keys, type ExecEvent, type SubmissionRequest,
 } from "./events.ts";
@@ -79,6 +80,9 @@ export interface ProblemRow {
   statement: string;
   limits: { timeMs: Record<Language, number>; memoryMb: number };
   starter_code: Partial<Record<Language, string>>;
+  /** Set when the problem is a question of an imported mock paper. */
+  paper_id: string | null;
+  paper_ordinal: number | null;
 }
 
 export interface SampleRow {
@@ -91,7 +95,7 @@ export interface SampleRow {
 
 export async function getProblem(sql: Sql, slug: string): Promise<ProblemRow | undefined> {
   const [p] = await sql<ProblemRow[]>`
-    SELECT id, slug, title, difficulty, problem_type, tags, statement, limits, starter_code
+    SELECT id, slug, title, difficulty, problem_type, tags, statement, limits, starter_code, paper_id, paper_ordinal
     FROM problems WHERE slug = ${slug}`;
   return p;
 }
@@ -123,6 +127,15 @@ export async function enqueueSubmission(
   if (!problem) return { error: "problem not found", status: 404 };
 
   let tests: JudgeJob["tests"] = "all";
+  if (req.mode === "submit") {
+    const [{ n }] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM test_cases WHERE problem_id = ${problem.id}`;
+    if (n === 0) {
+      return {
+        error: "This question has no sample output to check against, so there's nothing to submit to. Use Run to see your output.",
+        status: 400,
+      };
+    }
+  }
   if (req.mode === "run") {
     const samples = await getSamples(sql, problem.id);
     const b64 = (s: string) => Buffer.from(s).toString("base64");
@@ -161,4 +174,101 @@ export async function enqueueSubmission(
   await publishEvent(redis, id, { type: "queued", at: Date.now(), position });
   await redis.lpush(keys.queue, JSON.stringify(JudgeJob.parse(job)));
   return { id };
+}
+
+/* ---------------------------- navigation -------------------------------- */
+
+export interface Neighbor {
+  slug: string;
+  title: string;
+}
+
+export interface ProblemNav {
+  prev: Neighbor | null;
+  next: Neighbor | null;
+  /** 1-based position and count within the list (or the paper). */
+  index: number;
+  total: number;
+}
+
+/**
+ * Previous/next problem: within the paper for a mock-paper question,
+ * otherwise in the public problem list's order.
+ */
+export async function getProblemNav(sql: Sql, p: Pick<ProblemRow, "id" | "paper_id">): Promise<ProblemNav> {
+  const rows = p.paper_id
+    ? await sql<(Neighbor & { id: number })[]>`
+        SELECT id, slug, title FROM problems WHERE paper_id = ${p.paper_id} ORDER BY paper_ordinal, id`
+    : await sql<(Neighbor & { id: number })[]>`
+        SELECT id, slug, title FROM problems WHERE paper_id IS NULL ORDER BY id`;
+  const i = rows.findIndex((r) => r.id === p.id);
+  const pick = (r: (Neighbor & { id: number }) | undefined) => (r ? { slug: r.slug, title: r.title } : null);
+  return { prev: pick(rows[i - 1]), next: pick(rows[i + 1]), index: i + 1, total: rows.length };
+}
+
+/* ---------------------------- mock papers ------------------------------- */
+
+export interface PaperRow {
+  id: string;
+  title: string;
+  source: string;
+  intro: string;
+  duration_min: number;
+  created_at: Date;
+}
+
+export interface PaperQuestionRow {
+  slug: string;
+  title: string;
+  paper_ordinal: number;
+  examples: number;
+}
+
+/** Default limits for imported questions, which don't state any. */
+const PAPER_LIMITS = { timeMs: { cpp: 2000, c: 2000, python: 6000 }, memoryMb: 256 };
+
+/**
+ * Stores an imported paper. Each question becomes a problem row (with
+ * paper_id set) whose sample tests are the examples found in its text.
+ */
+export async function createPaper(sql: Sql, paper: PaperCreate, clientId: string): Promise<string> {
+  const id = randomUUID();
+  const short = id.replace(/-/g, "").slice(0, 10);
+  await sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO papers (id, title, source, intro, duration_min, client_id)
+      VALUES (${id}, ${paper.title}, ${paper.source}, ${paper.intro}, ${paper.durationMin}, ${clientId})`;
+    for (const [k, q] of paper.questions.entries()) {
+      const [row] = await tx<{ id: number }[]>`
+        INSERT INTO problems (slug, title, difficulty, problem_type, tags, statement, limits, starter_code, paper_id, paper_ordinal)
+        VALUES (${`paper-${short}-q${k + 1}`}, ${q.title}, 'medium', 'paper', ${[]}, ${q.statement},
+                ${tx.json(PAPER_LIMITS)}, ${tx.json({})}, ${id}, ${k + 1})
+        RETURNING id`;
+      const tests = q.examples.map((e, j) => {
+        const input = normalizeNewlines(e.input);
+        return {
+          problem_id: row.id,
+          ordinal: j,
+          input,
+          display_input: input.length > 4000 ? input.slice(0, 4000) + "…" : input.replace(/\n$/, ""),
+          expected_output: normalizeNewlines(e.output),
+          is_sample: true,
+          explanation: null,
+        };
+      });
+      if (tests.length) await tx`INSERT INTO test_cases ${tx(tests)}`;
+    }
+  });
+  return id;
+}
+
+export async function getPaper(sql: Sql, id: string): Promise<{ paper: PaperRow; questions: PaperQuestionRow[] } | null> {
+  const [paper] = await sql<PaperRow[]>`
+    SELECT id, title, source, intro, duration_min, created_at FROM papers WHERE id = ${id}`;
+  if (!paper) return null;
+  const questions = await sql<PaperQuestionRow[]>`
+    SELECT p.slug, p.title, p.paper_ordinal,
+      (SELECT count(*)::int FROM test_cases t WHERE t.problem_id = p.id) AS examples
+    FROM problems p WHERE p.paper_id = ${id} ORDER BY p.paper_ordinal`;
+  return { paper, questions };
 }

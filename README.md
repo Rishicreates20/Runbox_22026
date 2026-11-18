@@ -1,6 +1,6 @@
 # Codeplus
 
-A competitive-programming platform: problem pages with a Monaco editor, Run and Submit, live per-test progress, and a judge that runs every submission in `runbox`, a Linux-native sandbox built on namespaces, OverlayFS, cgroups and seccomp-BPF. Languages are C++17, C11 and Python 3.
+A competitive-programming platform: problem pages with a Monaco editor, Run and Submit, live per-test progress, timed practice of your own mock papers (imported from PDF, Word, PowerPoint, pasted text or a link), and a judge that runs every submission in `runbox`, a Linux-native sandbox built on namespaces, OverlayFS, cgroups and seccomp-BPF. Languages are C++17, C11 and Python 3.
 
 ```
 browser ──POST /api/submissions──▶ Next.js ──INSERT──▶ Postgres
@@ -20,7 +20,7 @@ browser ──POST /api/submissions──▶ Next.js ──INSERT──▶ Postg
 | `src/`, `scripts/`, `tests/`, `Makefile` | **runbox**, the sandbox (C, no dependencies). Docs: [docs/runbox.md](docs/runbox.md) |
 | `packages/shared/` | Zod schemas (problem upload, submission, queue job, events), branded ids, output checker, DB/Redis helpers |
 | `judge/` | Worker: pops jobs, compiles and runs them in runbox, streams events, stores results |
-| `web/` | Next.js 16 app: problem list, problem workspace, upload page, API routes, SSE |
+| `web/` | Next.js 16 app: problem list, problem workspace, mock-paper import and practice, admin JSON upload, API routes, SSE |
 | `db/schema.sql` | Postgres tables: `problems`, `test_cases`, `submissions` |
 | `problems/` | Seed problems (JSON) and `generate.py`, which builds them from reference solutions |
 | `docs/asyncapi.yaml` | AsyncAPI 3.0 contract for the SSE stream |
@@ -41,7 +41,7 @@ browser ──POST /api/submissions──▶ Next.js ──INSERT──▶ Postg
 
 All objects are strict, so unknown fields are rejected. A refinement requires Python's time limit to be at least the C/C++ one. Problem slugs and submission ids are branded types. Every test is stored twice: `input` (raw stdin, CRLF → LF, ending in a newline) and `display_input` (what the page shows). For the typed kinds both are produced from `args` by one canonical encoder, so authors never hand-write stdin. On the queue, code and test data are base64.
 
-Upload at `/admin` (or `POST /api/problems`). `?dryRun=1` validates and previews without saving and needs no token. Saving needs `Authorization: Bearer $ADMIN_TOKEN`.
+Upload problem JSON at `/admin` (not linked from the menu) or `POST /api/problems`. `?dryRun=1` validates and previews without saving and needs no token. Saving needs `Authorization: Bearer $ADMIN_TOKEN`.
 
 **SSE + Redis.** The judge appends each event to a per-submission Redis stream and publishes it, in one Lua script. The stream entry id is the SSE `id`. `GET /api/execution/{id}`:
 
@@ -54,6 +54,8 @@ Upload at `/admin` (or `POST /api/problems`). `?dryRun=1` validates and previews
 The contract is in [docs/asyncapi.yaml](docs/asyncapi.yaml). The Zod source of truth is `packages/shared/src/events.ts`.
 
 **Judge.** The worker takes jobs with `BLMOVE` into a per-slot processing list, so a crash puts them back on the queue at the next start. C/C++ is compiled **inside runbox** with a separate image that contains gcc (`make-rootfs.sh --gcc`). The binary comes out through `runbox --export`, which can't be tricked by symlinks, and is then run in the minimal image. Python gets a sandboxed syntax check, so syntax errors are reported as CE rather than RE. Submit stops at the first failing test. Run executes the sample cases, or the custom stdin typed in the console, and only checks inputs that match a sample. The checker ignores trailing spaces and trailing blank lines.
+
+**Mock papers.** `/practice` imports a paper from a PDF, `.docx`, `.pptx` or text file (up to 15 MB), pasted text, or a public link (web page, PDF, or a Google Doc/Slides shared as "anyone with the link"). `POST /api/papers/extract` turns it into text: mammoth + Turndown for DOCX and HTML (headings, lists, code blocks and tables survive), unpdf for PDF, and the slide XML for PPTX. Links are fetched server-side with a DNS check that refuses private, loopback and link-local addresses on every hop, a 20 s timeout and the same 15 MB cap. The browser then splits the text with `splitPaper` (`packages/shared/src/paper.ts`), which finds questions by label (`Q1`, `Question 2`, `Problem C`, `Task 3`…), else by repeated headings, a top-level numbered list or slide breaks. It also pulls out `Sample Input`/`Sample Output` (or `Input:`/`Output:`) pairs. The user reviews the split, can edit the text (the list updates live), picks a time, and saves. Each question becomes a `problems` row with `paper_id` set, its examples become sample tests, and it's kept out of the public list. Questions with examples get Run and Submit checked against them; questions without any are run-only (Submit is off and the API refuses it). The timer runs in the browser: an exam bar with Q chips, a countdown, Finish, and a time's-up dialog, and the paper page shows the score afterwards. Every problem page, paper or not, has Prev/Next.
 
 ## Run it locally
 
@@ -75,7 +77,7 @@ Environment (defaults shown in `web/.env.example` and `judge/src/config.ts`): `D
 
 ```sh
 sudo python3 tests/run_tests.py     # runbox: 22 sandbox checks
-npm test                            # Zod schema and checker tests
+npm test                            # Zod schema, checker and paper-splitter tests
 sudo -E npx tsx judge/test/e2e.ts   # 18 judge checks through the real queue (worker must be running)
 npm run typecheck
 ```
@@ -100,4 +102,5 @@ To split the system later, the web app runs anywhere that has Node (Vercel inclu
 
 - No user accounts yet. Submissions are tied to an anonymous browser cookie.
 - runbox's cgroup v2 path hasn't been exercised on a real v2 host. The dev machine only had v1, and all limit tests ran through the v1 fallback. Ubuntu 22.04/24.04 use v2, so run `sudo python3 tests/run_tests.py --cgroup v2` once on the server (the setup script runs the tests in `auto` mode, which picks v2 there).
+- Mock-paper questions use default limits (2 s for C/C++, 6 s for Python, 256 MB) and are checked only against the examples found in the text. Scanned PDFs (images, no text layer) can't be read; paste the text instead. Papers belong to the browser that imported them, but anyone with a paper's link can open it.
 - Java isn't offered: the seccomp allowlist hasn't been tuned for the JVM.

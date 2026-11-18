@@ -51,3 +51,22 @@ CREATE INDEX IF NOT EXISTS submissions_client_problem
   ON submissions (client_id, problem_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS submissions_problem_verdict
   ON submissions (problem_id, mode, verdict);
+
+-- Mock papers: a set of questions imported from a DOCX/PPTX/PDF, pasted text
+-- or a web page, practised under a timer. Each question is stored as a
+-- problem row with paper_id set, so the editor, Run and Submit work unchanged;
+-- those rows are left out of the public problem list.
+CREATE TABLE IF NOT EXISTS papers (
+  id            uuid PRIMARY KEY,
+  title         text NOT NULL,
+  source        text NOT NULL,                  -- file name, "pasted text" or the URL
+  intro         text NOT NULL DEFAULT '',            -- instructions before the first question
+  duration_min  integer NOT NULL CHECK (duration_min BETWEEN 5 AND 600),
+  client_id     text NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS papers_client ON papers (client_id, created_at DESC);
+
+ALTER TABLE problems ADD COLUMN IF NOT EXISTS paper_id uuid REFERENCES papers(id) ON DELETE CASCADE;
+ALTER TABLE problems ADD COLUMN IF NOT EXISTS paper_ordinal integer;
+CREATE INDEX IF NOT EXISTS problems_paper ON problems (paper_id, paper_ordinal);

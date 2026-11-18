@@ -152,3 +152,75 @@ table.subs tr.clickable:hover td { background: var(--panel-2); }
   .pane.left { max-height: 60vh; }
   .right { grid-template-rows: 60vh auto; }
 }
+
+/* ---------- prev / next ---------- */
+.nav-label { margin-right: 6px; white-space: nowrap; }
+.btn.nav-btn { margin-left: 4px; white-space: nowrap; text-decoration: none; color: var(--text); }
+.btn.nav-btn[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.hero .callout { color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-top: -12px; }
+
+/* ---------- mock papers: import ---------- */
+.section-title { font-size: 18px; margin: 36px 0 10px; }
+.importer .importer-body { padding: 16px; }
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 170px; border: 2px dashed var(--border); border-radius: 8px; cursor: pointer; text-align: center; padding: 16px;
+}
+.dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--panel-2); }
+.row-end { display: flex; justify-content: flex-end; margin-top: 10px; }
+.link-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.link-form p { flex-basis: 100%; margin: 4px 0 0; }
+.link-form input, .review-head input {
+  flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px;
+}
+
+.review-head { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+.review-head label { display: flex; flex-direction: column; }
+.review-head label:first-child { flex: 1; min-width: 220px; }
+.review-head .spacer { flex: 1; }
+.review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; height: 62vh; min-height: 380px; }
+.review-text { flex: 1; border: 0; border-radius: 0; resize: none; min-height: 0; }
+.found { padding-left: 0; list-style: none; margin: 0; }
+.found li { border: 1px solid var(--border); background: var(--panel-2); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.found-title { margin-bottom: 2px; }
+.found-preview { color: var(--muted); font-size: 12.5px; white-space: pre-wrap; max-height: 3.2em; overflow: hidden; }
+.found-ok { color: var(--ok); font-size: 13px; }
+
+/* ---------- mock papers: overview ---------- */
+.paper h1 { font-size: 26px; margin: 4px 0 6px; }
+.paper-meta { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); margin-bottom: 16px; }
+.paper-intro { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 16px; margin-bottom: 16px; }
+.paper-controls { margin: 18px 0 24px; min-height: 40px; }
+.paper-controls .hint { max-width: 640px; }
+.btn.big { padding: 8px 20px; font-size: 15px; }
+.paper-score { display: flex; gap: 40px; margin-bottom: 12px; }
+.paper-score .verdict { font-size: 26px; }
+
+/* ---------- mock papers: exam bar ---------- */
+.exam-bar {
+  height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  border-bottom: 1px solid var(--border); background: var(--panel-2); overflow-x: auto;
+}
+.exam-title { color: var(--text); font-weight: 600; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.exam-chips { display: flex; gap: 4px; }
+.exam-chip { border: 1px solid var(--border); border-radius: 6px; padding: 1px 9px; color: var(--muted); font-size: 13px; }
+.exam-chip:hover { color: var(--text); text-decoration: none; }
+.exam-chip.active { color: var(--text); border-color: var(--accent); background: var(--panel); }
+.exam-bar .spacer { flex: 1; }
+.exam-clock { font-family: var(--mono); font-size: 15px; font-weight: 600; white-space: nowrap; }
+.exam-clock.warn { color: var(--warn); }
+.exam-clock.bad { color: var(--bad); }
+.exam-confirm { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.workspace.with-exam-bar { height: calc(100vh - 48px - 44px); }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.modal { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px 22px; max-width: 420px; width: 100%; }
+.modal h2 { margin: 0 0 6px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+@media (max-width: 860px) {
+  .review-grid { grid-template-columns: 1fr; height: auto; }
+  .review-grid .pane { height: 50vh; }
+  .workspace.with-exam-bar { height: auto; }
+}

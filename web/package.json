@@ -14,22 +14,30 @@
   },
   "dependencies": {
     "@codeplus/shared": "*",
+    "@mixmark-io/domino": "^2.2.0",
     "@monaco-editor/react": "^4.7.0",
     "ioredis": "^5.8.0",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
     "monaco-editor": "0.55.1",
     "next": "^16.4.6",
     "postgres": "^3.4.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
+    "turndown": "^7.2.5",
+    "turndown-plugin-gfm": "^1.0.2",
+    "unpdf": "^1.9.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/turndown": "^5.0.6",
     "typescript": "^5.9.0"
   }
 }

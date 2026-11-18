@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { OnMount } from "@monaco-editor/react";
 import {
@@ -31,6 +32,17 @@ interface Props {
   description: ReactNode;
   starterCode: Partial<Record<Language, string>>;
   samples: { input: string; displayInput: string }[];
+  /** Previous/next question links shown in the left pane's tab bar. */
+  nav?: { prev: NavLink | null; next: NavLink | null; label: string };
+  /** False when there's nothing to check a submission against. */
+  canSubmit?: boolean;
+  /** Extra class on the grid, e.g. to leave room for the exam bar. */
+  className?: string;
+}
+
+interface NavLink {
+  href: string;
+  title: string;
 }
 
 interface SubmissionRow {
@@ -61,12 +73,12 @@ const storage = {
   },
 };
 
-export default function Workspace({ slug, description, starterCode, samples }: Props) {
+export default function Workspace({ slug, description, starterCode, samples, nav, canSubmit = true, className }: Props) {
   const [leftTab, setLeftTab] = useState<"description" | "submissions">("description");
   const [consoleTab, setConsoleTab] = useState<"testcase" | "result">("testcase");
   const [language, setLanguage] = useState<Language>("cpp");
   const [ready, setReady] = useState(false);
-  const [cases, setCases] = useState<string[]>(() => samples.map((s) => s.input));
+  const [cases, setCases] = useState<string[]>(() => (samples.length ? samples.map((s) => s.input) : [""]));
   const [activeCase, setActiveCase] = useState(0);
   const [activeResult, setActiveResult] = useState(0);
   const [current, setCurrent] = useState<{ id: string; mode: SubmissionMode } | null>(null);
@@ -143,7 +155,7 @@ export default function Workspace({ slug, description, starterCode, samples }: P
   }
 
   return (
-    <main className="workspace">
+    <main className={`workspace ${className ?? ""}`}>
       <section className="pane left">
         <div className="tabs">
           <button className={`tab ${leftTab === "description" ? "active" : ""}`} onClick={() => setLeftTab("description")}>
@@ -152,6 +164,14 @@ export default function Workspace({ slug, description, starterCode, samples }: P
           <button className={`tab ${leftTab === "submissions" ? "active" : ""}`} onClick={() => setLeftTab("submissions")}>
             Submissions
           </button>
+          {nav && (
+            <>
+              <span className="spacer" />
+              <span className="hint nav-label">{nav.label}</span>
+              <NavButton link={nav.prev} dir="prev" />
+              <NavButton link={nav.next} dir="next" />
+            </>
+          )}
         </div>
         <div className="scroll">
           {leftTab === "description" ? (
@@ -183,7 +203,13 @@ export default function Workspace({ slug, description, starterCode, samples }: P
             <button id="run-btn" className="btn" disabled={running} onClick={() => submit("run")}>
               Run
             </button>
-            <button className="btn primary" style={{ marginLeft: 6 }} disabled={running} onClick={() => submit("submit")}>
+            <button
+              className="btn primary"
+              style={{ marginLeft: 6 }}
+              disabled={running || !canSubmit}
+              title={canSubmit ? "Run every test and record the verdict" : "No sample output was found in this question, so there's nothing to check. Use Run."}
+              onClick={() => submit("submit")}
+            >
               Submit
             </button>
           </div>
@@ -235,6 +261,21 @@ export default function Workspace({ slug, description, starterCode, samples }: P
         </div>
       </section>
     </main>
+  );
+}
+
+function NavButton({ link, dir }: { link: NavLink | null; dir: "prev" | "next" }) {
+  const text = dir === "prev" ? "‹ Prev" : "Next ›";
+  if (!link)
+    return (
+      <span className="btn small nav-btn" aria-disabled="true">
+        {text}
+      </span>
+    );
+  return (
+    <Link className="btn small nav-btn" href={link.href} title={link.title} rel={dir}>
+      {text}
+    </Link>
   );
 }
 
@@ -331,14 +372,20 @@ function ResultView(props: {
   }
 
   const failed = done.failedTest ? results.find((r) => r.test === done.failedTest) : undefined;
+  // A run on custom input has nothing to compare against: don't call it "Accepted".
+  const unchecked = current.mode === "run" && done.verdict === "AC" && results.length > 0 && results.every((r) => r.expected === undefined);
   return (
     <>
-      <div className={`verdict v-${done.verdict}`}>{VERDICT_LABEL[done.verdict]}</div>
+      <div className={`verdict v-${done.verdict}`}>
+        {unchecked ? "Finished · output not checked" : VERDICT_LABEL[done.verdict]}
+      </div>
       {done.verdict !== "CE" && done.verdict !== "IE" && (
         <div className="stats">
-          <span>
-            {done.passed} / {done.total} tests passed
-          </span>
+          {!unchecked && (
+            <span>
+              {done.passed} / {done.total} tests passed
+            </span>
+          )}
           <span>Runtime {done.timeMs} ms</span>
           <span>Memory {(done.memoryKb / 1024).toFixed(1)} MB</span>
         </div>

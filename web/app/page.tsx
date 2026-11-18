@@ -14,9 +14,12 @@ export default async function Home() {
           Write a solution in C++, C or Python and submit it. Every submission is compiled and run in an
           isolated Linux sandbox, and you watch each test case finish live.
         </p>
+        <p className="callout">
+          Have a mock paper? <Link href="/practice">Upload it and practise it like a real exam →</Link>
+        </p>
       </section>
       {problems.length === 0 ? (
-        <p className="empty">No problems yet. Run <code>npm run seed</code> or upload one.</p>
+        <p className="empty">No problems yet. Run <code>npm run seed</code>, or <Link href="/practice">practise your own mock paper</Link>.</p>
       ) : (
         <table className="problems">
           <thead>

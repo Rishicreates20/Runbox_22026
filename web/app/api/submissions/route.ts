@@ -1,18 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ProblemSlug, SubmissionRequest, enqueueSubmission, keys } from "@codeplus/shared";
+import { ProblemSlug, SubmissionRequest, enqueueSubmission } from "@codeplus/shared";
 import { sql } from "@/lib/db";
 import { redis } from "@/lib/redis";
+import { overLimit } from "@/lib/rate-limit";
 import { ensureClientId, readClientId } from "@/lib/client-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const LIMIT_PER_MINUTE = 20;
-
-async function overLimit(key: string): Promise<boolean> {
-  const [[, n]] = (await redis.multi().incr(key).expire(key, 60, "NX").exec()) as [[null, number]];
-  return n > LIMIT_PER_MINUTE;
-}
 
 /** POST /api/submissions: validate, record, enqueue. Returns {id}. */
 export async function POST(req: NextRequest) {
@@ -28,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
   const clientId = await ensureClientId();
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if ((await overLimit(keys.rate(`c:${clientId}`))) || (await overLimit(keys.rate(`ip:${ip}`)))) {
+  if ((await overLimit(`c:${clientId}`, LIMIT_PER_MINUTE)) || (await overLimit(`ip:${ip}`, LIMIT_PER_MINUTE))) {
     return NextResponse.json({ error: "Too many submissions. Wait a minute and try again." }, { status: 429 });
   }
   const r = await enqueueSubmission(sql, redis, parsed.data, clientId);
