@@ -78,7 +78,16 @@ export default function Workspace({ slug, description, starterCode, samples, nav
   const [consoleTab, setConsoleTab] = useState<"testcase" | "result">("testcase");
   const [language, setLanguage] = useState<Language>("cpp");
   const [ready, setReady] = useState(false);
-  const [cases, setCases] = useState<string[]>(() => (samples.length ? samples.map((s) => s.input) : [""]));
+  const [cases, setCasesState] = useState<string[]>(() => (samples.length ? samples.map((s) => s.input) : [""]));
+  // Expected output typed for each case ("" = not checked); parallel to cases.
+  const [expected, setExpected] = useState<string[]>(() => cases.map(() => ""));
+  const casesKey = `codeplus:cases:${slug}`;
+  const setCases = (next: string[], nextExpected = expected) => {
+    const exp = next.map((_, j) => nextExpected[j] ?? "");
+    setCasesState(next);
+    setExpected(exp);
+    storage.set(casesKey, JSON.stringify({ cases: next, expected: exp }));
+  };
   const [activeCase, setActiveCase] = useState(0);
   const [activeResult, setActiveResult] = useState(0);
   const [current, setCurrent] = useState<{ id: string; mode: SubmissionMode } | null>(null);
@@ -94,6 +103,14 @@ export default function Workspace({ slug, description, starterCode, samples, nav
   const initialCode = (l: Language) => storage.get(codeKey(l)) ?? starterCode[l] ?? FALLBACK[l];
 
   useEffect(() => {
+    // Test cases you added for this problem come back after navigating away.
+    try {
+      const c = JSON.parse(storage.get(casesKey) ?? "null") as { cases: string[]; expected: string[] } | null;
+      if (c && Array.isArray(c.cases) && c.cases.length) {
+        setCasesState(c.cases.slice(0, 6).map(String));
+        setExpected(c.cases.slice(0, 6).map((_, j) => String(c.expected?.[j] ?? "")));
+      }
+    } catch {}
     const saved = storage.get("codeplus:language") as Language | null;
     if (saved && LANGUAGES.includes(saved)) setLanguage(saved);
     setReady(true);
@@ -142,7 +159,7 @@ export default function Workspace({ slug, description, starterCode, samples, nav
       const res = await fetch("/api/submissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problem: slug, language, code, mode, ...(mode === "run" ? { customInputs: cases } : {}) }),
+        body: JSON.stringify({ problem: slug, language, code, mode, ...(mode === "run" ? { customInputs: cases, customExpected: expected } : {}) }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) setError(body.issues?.[0]?.message ?? body.error ?? `Request failed (${res.status})`);
@@ -240,6 +257,9 @@ export default function Workspace({ slug, description, starterCode, samples, nav
             {consoleTab === "testcase" ? (
               <TestcaseEditor
                 cases={cases}
+                expected={expected}
+                setExpected={(e) => setCases(cases, e)}
+                resetCases={() => setCases(samples.length ? samples.map((s) => s.input) : [""], [])}
                 samples={samples}
                 active={activeCase}
                 setActive={setActiveCase}
@@ -281,12 +301,15 @@ function NavButton({ link, dir }: { link: NavLink | null; dir: "prev" | "next" }
 
 function TestcaseEditor(props: {
   cases: string[];
+  expected: string[];
+  setExpected: (e: string[]) => void;
+  resetCases: () => void;
   samples: Props["samples"];
   active: number;
   setActive: (i: number) => void;
-  setCases: (c: string[]) => void;
+  setCases: (c: string[], e?: string[]) => void;
 }) {
-  const { cases, samples, active, setActive, setCases } = props;
+  const { cases, expected, setExpected, resetCases, samples, active, setActive, setCases } = props;
   const i = Math.min(active, cases.length - 1);
   const sample = samples.find((s) => s.input === cases[i]);
   return (
@@ -298,14 +321,24 @@ function TestcaseEditor(props: {
           </button>
         ))}
         {cases.length < 6 && (
-          <button className="case-chip" onClick={() => (setCases([...cases, cases[i] ?? ""]), setActive(cases.length))} title="Add a case">
+          <button
+            className="case-chip"
+            onClick={() => (setCases([...cases, ""], [...expected, ""]), setActive(cases.length))}
+            title="Add your own test case"
+          >
             +
           </button>
         )}
         {cases.length > 1 && (
           <button
             className="case-chip"
-            onClick={() => (setCases(cases.filter((_, j) => j !== i)), setActive(Math.max(0, i - 1)))}
+            onClick={() => (
+              setCases(
+                cases.filter((_, j) => j !== i),
+                expected.filter((_, j) => j !== i),
+              ),
+              setActive(Math.max(0, i - 1))
+            )}
             title="Remove this case"
           >
             −
@@ -326,7 +359,24 @@ function TestcaseEditor(props: {
         onChange={(e) => setCases(cases.map((c, j) => (j === i ? e.target.value : c)))}
         rows={Math.min(10, Math.max(3, (cases[i] ?? "").split("\n").length))}
       />
-      {!sample && <p className="hint">Custom input: your output is shown but not checked.</p>}
+      {!sample && (
+        <>
+          <div className="field-label">Expected output (optional: fill it in and Run checks your answer)</div>
+          <textarea
+            className="mono"
+            spellCheck={false}
+            value={expected[i] ?? ""}
+            placeholder="Leave empty to just see your output"
+            onChange={(e) => setExpected(cases.map((_, j) => (j === i ? e.target.value : (expected[j] ?? ""))))}
+            rows={Math.min(8, Math.max(2, (expected[i] ?? "").split("\n").length))}
+          />
+        </>
+      )}
+      {samples.length > 0 && cases.some((c) => !samples.some((s) => s.input === c)) && (
+        <button className="btn small" style={{ marginTop: 8 }} onClick={resetCases}>
+          Restore the example cases
+        </button>
+      )}
     </>
   );
 }

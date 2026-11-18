@@ -224,3 +224,9 @@ table.subs tr.clickable:hover td { background: var(--panel-2); }
   .review-grid .pane { height: 50vh; }
   .workspace.with-exam-bar { height: auto; }
 }
+.found-tests { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.found-warn { color: var(--warn); font-size: 13px; }
+.tests-editor { margin-top: 8px; }
+.test-pair { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end; margin-bottom: 6px; }
+.test-pair label { display: flex; flex-direction: column; min-width: 0; }
+.test-pair textarea { min-height: 56px; }

@@ -144,10 +144,12 @@ export async function enqueueSubmission(
       : samples.map((s) => s.input);
     tests = inputs.map((input, ordinal) => {
       const known = samples.find((s) => s.input === input);
+      const typed = req.customInputs?.length ? req.customExpected?.[ordinal] : undefined;
+      const expected = typed?.trim() ? normalizeNewlines(typed) : known?.expected_output;
       return {
         ordinal,
         inputB64: b64(input),
-        ...(known ? { expectedB64: b64(known.expected_output) } : {}),
+        ...(expected !== undefined ? { expectedB64: b64(expected) } : {}),
         hidden: false,
         displayInput: known?.display_input ?? "custom input",
       };
@@ -241,7 +243,7 @@ export async function createPaper(sql: Sql, paper: PaperCreate, clientId: string
     for (const [k, q] of paper.questions.entries()) {
       const [row] = await tx<{ id: number }[]>`
         INSERT INTO problems (slug, title, difficulty, problem_type, tags, statement, limits, starter_code, paper_id, paper_ordinal)
-        VALUES (${`paper-${short}-q${k + 1}`}, ${q.title}, 'medium', 'paper', ${[]}, ${q.statement},
+        VALUES (${`paper-${short}-q${k + 1}`}, ${q.title}, ${q.difficulty ?? "medium"}, 'paper', ${[]}, ${q.statement},
                 ${tx.json(PAPER_LIMITS)}, ${tx.json({})}, ${id}, ${k + 1})
         RETURNING id`;
       const tests = q.examples.map((e, j) => {

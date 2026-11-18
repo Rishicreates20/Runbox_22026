@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useMemo, useRef, useState } from "react";
-import { MAX_PAPER_FILE_BYTES, PAPER_FILE_TYPES, splitPaper } from "@codeplus/shared";
+import { MAX_PAPER_FILE_BYTES, PAPER_FILE_TYPES, splitPaper, type PaperExample } from "@codeplus/shared";
 
 type Source = "file" | "paste" | "link";
 
@@ -168,11 +168,17 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
   const split = useMemo(() => splitPaper(deferred), [deferred]);
   const [title, setTitle] = useState(() => (doc.title || split.title || doc.source).slice(0, 120));
   const [duration, setDuration] = useState(() => {
+    if (split.durationMin) return split.durationMin; // the paper says how long it is
     const guess = Math.max(15, Math.min(180, split.questions.length * 20));
     return DURATIONS.find((d) => d >= guess) ?? 180;
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Test cases the user added or fixed, per question number (overrides what
+  // was found in the text).
+  const [edited, setEdited] = useState<Record<number, PaperExample[]>>({});
+  const [open, setOpen] = useState<number | null>(null);
+  const testsOf = (i: number) => edited[i] ?? split.questions[i]?.examples ?? [];
   const tooMany = split.questions.length > 40;
 
   async function save() {
@@ -187,7 +193,11 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
           source: doc.source.slice(0, 500),
           durationMin: duration,
           intro: split.intro.slice(0, 20_000),
-          questions: split.questions.map((q) => ({ ...q, title: q.title.slice(0, 120) })),
+          questions: split.questions.map((q, i) => ({
+            ...q,
+            title: q.title.slice(0, 120),
+            examples: testsOf(i).filter((e) => e.input.trim() || e.output.trim()).slice(0, 10),
+          })),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -210,7 +220,7 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
         <label>
           <span className="field-label">Time</span>
           <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-            {DURATIONS.map((d) => (
+            {[...new Set([...DURATIONS, duration])].sort((x, y) => x - y).map((d) => (
               <option key={d} value={d}>
                 {d < 60 ? `${d} min` : `${Math.floor(d / 60)} h${d % 60 ? ` ${d % 60} min` : ""}`}
               </option>
@@ -253,11 +263,22 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
                     <strong>Q{i + 1}.</strong> {q.title}
                   </div>
                   <div className="found-preview">{q.statement.slice(0, 220)}</div>
-                  <div className={q.examples.length ? "found-ok" : "hint"}>
-                    {q.examples.length
-                      ? `✓ ${q.examples.length} sample${q.examples.length > 1 ? "s" : ""} found: Submit will check ${q.examples.length > 1 ? "them" : "it"}`
-                      : "No sample output found: you can Run it, but nothing is checked"}
+                  <div className="found-tests">
+                    <span className={testsOf(i).length ? "found-ok" : "found-warn"}>
+                      {testsOf(i).length
+                        ? `✓ ${testsOf(i).length} test case${testsOf(i).length > 1 ? "s" : ""}${edited[i] ? "" : " found"}: Submit checks ${testsOf(i).length > 1 ? "them" : "it"}`
+                        : "No test cases found: add one so your answer can be checked"}
+                    </span>
+                    <button className="btn small" onClick={() => setOpen(open === i ? null : i)}>
+                      {open === i ? "Done" : testsOf(i).length ? "View / edit tests" : "+ Add test case"}
+                    </button>
                   </div>
+                  {open === i && (
+                    <TestsEditor
+                      tests={testsOf(i).length ? testsOf(i) : [{ input: "", output: "" }]}
+                      onChange={(t) => setEdited({ ...edited, [i]: t })}
+                    />
+                  )}
                 </li>
               ))}
             </ol>
@@ -265,5 +286,33 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
         </div>
       </div>
     </section>
+  );
+}
+
+function TestsEditor({ tests, onChange }: { tests: PaperExample[]; onChange: (t: PaperExample[]) => void }) {
+  const set = (j: number, k: keyof PaperExample, v: string) => onChange(tests.map((t, x) => (x === j ? { ...t, [k]: v } : t)));
+  return (
+    <div className="tests-editor">
+      {tests.map((t, j) => (
+        <div key={j} className="test-pair">
+          <label>
+            <span className="field-label">Input {j + 1} (stdin)</span>
+            <textarea className="mono" rows={3} value={t.input} spellCheck={false} onChange={(e) => set(j, "input", e.target.value)} />
+          </label>
+          <label>
+            <span className="field-label">Expected output</span>
+            <textarea className="mono" rows={3} value={t.output} spellCheck={false} onChange={(e) => set(j, "output", e.target.value)} />
+          </label>
+          <button className="btn small" title="Remove this test" onClick={() => onChange(tests.filter((_, x) => x !== j))}>
+            ✕
+          </button>
+        </div>
+      ))}
+      {tests.length < 10 && (
+        <button className="btn small" onClick={() => onChange([...tests, { input: "", output: "" }])}>
+          + Add another
+        </button>
+      )}
+    </div>
   );
 }

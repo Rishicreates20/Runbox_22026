@@ -98,15 +98,95 @@ async function pptxText(buf: Buffer): Promise<string> {
 }
 
 async function pdfText(buf: Buffer): Promise<{ text: string; title: string }> {
-  const { extractText, getDocumentProxy, getMeta } = await import("unpdf");
+  const { getDocumentProxy, getMeta } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(buf));
-  const { text } = await extractText(pdf, { mergePages: false });
+  const text: string[] = [];
+  for (let n = 1; n <= Math.min(pdf.numPages, 300); n++) {
+    const content = await (await pdf.getPage(n)).getTextContent();
+    text.push(pageText(content.items as PdfItem[]));
+  }
   let title = "";
   try {
     const meta = await getMeta(pdf);
     title = String((meta.info as Record<string, unknown>)?.Title ?? "");
   } catch {}
-  return { text: (text as string[]).map((t) => t.trim()).join("\n\n"), title };
+  return { text: cleanPdfText(text as string[]), title };
+}
+
+interface PdfItem {
+  str?: string;
+  transform?: number[];
+  height?: number;
+  hasEOL?: boolean;
+}
+
+/**
+ * Joins a page's text items like pdf.js does, but marks superscripts: a
+ * smaller item raised above the one before it ("10" then a raised "6")
+ * becomes "10^6" instead of "106".
+ */
+function pageText(items: PdfItem[]): string {
+  let out = "";
+  let prev: { y: number; h: number } | null = null;
+  for (const it of items) {
+    if (typeof it.str !== "string") continue;
+    const y = it.transform?.[5] ?? 0;
+    const h = it.height || Math.abs(it.transform?.[3] ?? 0);
+    const sup = prev && it.str.trim() && h > 0 && h < prev.h * 0.9 && y > prev.y + prev.h * 0.2 && y < prev.y + prev.h;
+    if (sup && /[0-9A-Za-z)]$/.test(out)) out += "^";
+    out += it.str;
+    if (it.hasEOL) out += "\n";
+    // Keep the baseline of normal text, so a run of superscript items is measured against it.
+    if (!sup && it.str.trim()) prev = { y, h };
+    if (it.hasEOL) prev = null;
+  }
+  return out;
+}
+
+/**
+ * Tidies text pulled from a PDF:
+ * - drops running headers/footers (a short line repeated on many pages,
+ *   ignoring page numbers), which otherwise land mid-question;
+ * - turns Wingdings bullets, which come out as a lone "l", into "- ".
+ */
+export function cleanPdfText(pages: string[]): string {
+  const norm = (l: string) => l.trim().replace(/\d+/g, "#");
+  const seen = new Map<string, number>();
+  for (const page of pages) {
+    for (const key of new Set(page.split("\n").map(norm))) if (key) seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
+  const minRepeats = Math.max(3, Math.ceil(pages.length / 2));
+  const bulletL = /^l\s+(?=[A-Z0-9(])/;
+  const all = pages.join("\n").split("\n");
+  const lBullets = all.filter((l) => bulletL.test(l.trim())).length >= 3;
+  return pages
+    .map((page) =>
+      page
+        .split("\n")
+        .filter((l) => {
+          const k = norm(l);
+          return !(k && k.length <= 100 && (seen.get(k) ?? 0) >= minRepeats);
+        })
+        .map((l) => (lBullets ? l.replace(/^(\s*)l\s+(?=[A-Z0-9(])/, "$1- ").replace(/^(\s*)[•▪◦●]\s*/, "$1- ") : l))
+        // Re-join sentences the PDF wrapped: a long line followed by one that
+        // starts in lower case continues the same sentence.
+        .reduce<string[]>((acc, l) => {
+          const last = acc[acc.length - 1];
+          if (last !== undefined && last.trim().length > 50 && !/[.:;!?]$/.test(last.trim()) && /^[a-z(]/.test(l.trim())) {
+            acc[acc.length - 1] = `${last.trimEnd()} ${l.trim()}`;
+          } else {
+            // A heading after a bullet list ends the list (Markdown would
+            // otherwise fold "Output Format" into the last bullet).
+            if (last !== undefined && /^\s*- /.test(last) && l.trim() && !/^\s*- /.test(l)) acc.push("");
+            acc.push(l);
+          }
+          return acc;
+        }, [])
+        .join("\n")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function looksBinary(buf: Buffer): boolean {

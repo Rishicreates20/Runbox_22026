@@ -16,8 +16,11 @@ export interface PaperExample {
   output: string;
 }
 
+export type PaperDifficulty = "easy" | "medium" | "hard";
+
 export interface SplitQuestion {
   title: string;
+  difficulty?: PaperDifficulty;
   statement: string;
   examples: PaperExample[];
 }
@@ -28,6 +31,8 @@ export interface SplitPaper {
   /** Text before the first question: instructions, marks, etc. */
   intro: string;
   questions: SplitQuestion[];
+  /** Time limit the paper states ("Duration 90 minutes", "TIME: 3 HOURS"), if any. */
+  durationMin?: number;
   /** How the questions were found, shown in the review step. */
   method: "labels" | "headings" | "numbers" | "separators" | "whole";
 }
@@ -190,33 +195,68 @@ export function splitPaper(text: string): SplitPaper {
       const fl = firstLine(method === "numbers" ? body.replace(NUMBERED, "$2") : body);
       title = fl.length > 60 ? fl.slice(0, 57).trimEnd() + "…" : fl;
     }
-    questions.push({ title: title || `Question ${n}`, statement: body, examples: findExamples(body) });
+    const examples = findExamples(body);
+    if (examples.converted) body += `\n\n${CONVERTED_NOTE}`;
+    // "Two Sum EASY", "Two Sum (Medium)": keep the level apart from the title.
+    let difficulty: PaperDifficulty | undefined;
+    title = title.replace(/\s*[-–—|(\[]?\s*\b(easy|medium|hard)\b\s*[)\]]?\s*$/i, (_, d: string) => {
+      difficulty = d.toLowerCase() as PaperDifficulty;
+      return "";
+    }) || title;
+    questions.push({
+      title: title || `Question ${n}`,
+      ...(difficulty ? { difficulty } : {}),
+      statement: body,
+      examples: examples.map((e) => ({ ...e, input: reflowInput(e.input, body) })),
+    });
   });
 
   const title =
     (intro && firstLine(intro)) || (method === "whole" || method === "separators" ? firstLine(src) : "") || "Mock paper";
-  return { title: title.slice(0, 120), intro, questions, method };
+  return { title: title.slice(0, 120), intro, questions, method, ...statedDuration(intro || src.slice(0, 3000)) };
+}
+
+function statedDuration(text: string): { durationMin?: number } {
+  const m =
+    /\b(?:time|duration|time allowed|total time)\b[^\n\d]{0,20}(\d+(?:\.\d+)?)\s*(hours?|hrs?|h\b|minutes|mins?)/i.exec(text) ??
+    /\b(\d+(?:\.\d+)?)\s*(hours?|hrs?)\b/i.exec(text);
+  if (!m) return {};
+  const min = Math.round(Number(m[1]) * (/^h/i.test(m[2]) ? 60 : 1));
+  return min >= 5 && min <= 600 ? { durationMin: min } : {};
 }
 
 /* ---------------------------- examples ---------------------------------- */
 
 type Label = "input" | "output" | "stop";
 
-const LABEL =
-  /^(?:(?:sample|example|test)\s*(?:case\s*)?(?:#?\d+\s*)?[:.\-–]?\s*)?(input|output|explanation|note|notes|constraints?)\s*(#?\d+)?\s*(format|specification|description)?\s*([:：])?\s*(.*)$/i;
-const EXAMPLE_HEAD = /^(?:sample|example)s?\s*(?:test\s*)?(?:case\s*)?#?\d*\s*[:.]?\s*$/i;
+const PREFIX = String.raw`(?:(?:sample|example|test|expected|your|correct)\s*(?:test\s*)?(?:case\s*)?(?:#?\d+\s*)?[:.\-–)]?\s*)`;
+const WORD = String.raw`(input|output|stdin|stdout|i\s*\/\s*p|o\s*\/\s*p|explanation|explaination|note|notes|constraints?|hint)`;
+const LABEL = new RegExp(
+  String.raw`^(${PREFIX})?${WORD}\s*(#?\d+)?\s*(format|specification|description|type)?\s*(\d+)?\s*([:：=\-–]|\s+is\b)?\s*(.*)$`,
+  "i",
+);
+const EXAMPLE_HEAD = /^(?:sample|example|test)s?\s*(?:test\s*)?(?:case\s*)?#?\d*\s*[:.)\-–]?\s*$/i;
 
-function labelOf(line: string): { kind: Label; rest: string; format: boolean } | null {
-  const s = bare(line).replace(/^[*_`]+|[*_`]+$/g, "").trim();
-  if (EXAMPLE_HEAD.test(s)) return { kind: "stop", rest: "", format: false };
+interface LabelInfo {
+  kind: Label;
+  rest: string;
+  format: boolean;
+  /** "Sample Input", "Input:" … as opposed to a bare "Input" heading. */
+  strong: boolean;
+}
+
+function labelOf(line: string): LabelInfo | null {
+  const s = bare(line).replace(/^[*_`|]+|[*_`|]+$/g, "").trim();
+  if (EXAMPLE_HEAD.test(s)) return { kind: "stop", rest: "", format: false, strong: true };
   const m = LABEL.exec(s);
   if (!m) return null;
-  const rest = m[5].replace(/^[*_`]+|[*_`]+$/g, "").trim();
+  const rest = m[7].replace(/^[*_`]+|[*_`]+$/g, "").trim();
+  const sep = Boolean(m[6]);
   // "Input the number of…" is a sentence, not a label.
-  if (rest && !m[4] && !looksLikeData(rest)) return null;
-  const word = m[1].toLowerCase();
-  const kind: Label = word === "input" ? "input" : word === "output" ? "output" : "stop";
-  return { kind, rest, format: Boolean(m[3]) };
+  if (rest && !sep && !looksLikeData(rest)) return null;
+  const w = m[2].toLowerCase().replace(/\s+/g, "");
+  const kind: Label = w === "input" || w === "stdin" || w === "i/p" ? "input" : w === "output" || w === "stdout" || w === "o/p" ? "output" : "stop";
+  return { kind, rest, format: Boolean(m[4]), strong: Boolean(m[1]) || sep };
 }
 
 /** True for lines that look like program data rather than prose. */
@@ -233,59 +273,231 @@ function stripLine(l: string): string {
   return unescapeMd(l.replace(/^\s*`(.*)`\s*$/, "$1")).replace(/\s+$/, "");
 }
 
+const FENCE = /^\s*(```|~~~)/;
+
 /** Reads one example block starting after a label line. */
-function readBlock(lines: string[], start: number, first: string): { text: string; next: number } {
+function readBlock(lines: string[], start: number, first: string, strong: boolean): { text: string; next: number } {
   const got: string[] = [];
   if (first) got.push(stripLine(first));
   let i = start;
   // Skip blank lines, then accept a fenced block if one starts here.
   while (i < lines.length && !lines[i].trim()) i++;
-  if (!first && i < lines.length && /^\s*(```|~~~)/.test(lines[i])) {
+  if (!first && i < lines.length && FENCE.test(lines[i])) {
     const fence = lines[i].trim().slice(0, 3);
     i++;
     while (i < lines.length && !lines[i].trim().startsWith(fence)) got.push(lines[i++].replace(/\s+$/, ""));
     return { text: got.join("\n").replace(/^\n+|\n+$/g, ""), next: i + 1 };
   }
   i = start;
+  let sawBlank = false;
   for (; i < lines.length; i++) {
     const l = lines[i];
     if (!l.trim()) {
-      if (got.length && /^\s*(```|~~~)/.test(lines[i + 1] ?? "")) break;
+      if (got.length && FENCE.test(lines[i + 1] ?? "")) break;
+      if (got.length) sawBlank = true;
       continue;
     }
-    if (labelOf(l) || HEADING.test(l) || HR.test(l) || /^\s*(```|~~~)/.test(l)) break;
-    if (!looksLikeData(stripLine(l))) break;
-    got.push(stripLine(l));
+    if (labelOf(l) || HEADING.test(l) || HR.test(l) || FENCE.test(l) || /^\s*\|/.test(l)) break;
+    const t = stripLine(l);
+    // Under a clear "Sample Input:" label the first lines are data even when
+    // they read like prose (string inputs); later prose is commentary.
+    if (!looksLikeData(t) && !(strong && got.length === 0) && !(strong && !sawBlank && got.length < 3)) break;
+    got.push(t);
   }
-  return { text: got.join("\n"), next: i };
+  return { text: got.join("\n").trim(), next: i };
 }
 
-/** LeetCode-style "nums = [1,2], k = 3" isn't stdin; we can't run it as-is. */
-function isAssignmentStyle(s: string): boolean {
-  return /^[A-Za-z_]\w*\s*=\s*\S/.test(s.trim());
+/* ---- LeetCode-style "nums = [2,7], target = 9" → stdin ---- */
+
+function splitTopLevel(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0, quote = "", cur = "";
+  for (const ch of s) {
+    if (quote) {
+      cur += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    if ("[({".includes(ch)) depth++;
+    if ("])}".includes(ch)) depth--;
+    if ((ch === "," || ch === "\n" || ch === ";") && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  parts.push(cur);
+  return parts.map((p) => p.trim()).filter(Boolean);
 }
 
-/** Finds Sample Input / Sample Output pairs in a question's text. */
-export function findExamples(text: string): PaperExample[] {
-  const lines = normalizeNewlines(text).split("\n");
+function parseValue(raw: string): unknown {
+  const t = raw.trim();
+  try {
+    return JSON.parse(t);
+  } catch {}
+  try {
+    return JSON.parse(t.replace(/'/g, '"').replace(/\bTrue\b/g, "true").replace(/\bFalse\b/g, "false").replace(/\bNone\b/g, "null"));
+  } catch {}
+  return t;
+}
+
+function scalar(v: unknown): string {
+  return v === null ? "null" : typeof v === "string" ? v : String(v);
+}
+
+/** One value as stdin: arrays as their length then the items; grids as "rows cols". */
+function encodeValue(v: unknown): string {
+  if (!Array.isArray(v)) return scalar(v);
+  if (v.length > 0 && v.every(Array.isArray)) {
+    const rows = v as unknown[][];
+    const cols = rows[0].length;
+    if (rows.every((r) => r.length === cols)) return [`${rows.length} ${cols}`, ...rows.map((r) => r.map(scalar).join(" "))].join("\n");
+    return [String(rows.length), ...rows.map((r) => [r.length, ...r.map(scalar)].join(" "))].join("\n");
+  }
+  return `${v.length}\n${v.map(scalar).join(" ")}`;
+}
+
+/** Output values: arrays as space-separated items (a grid as lines). */
+function encodeOutput(raw: string): string {
+  const v = parseValue(raw);
+  if (Array.isArray(v)) {
+    if (v.length > 0 && v.every(Array.isArray)) return (v as unknown[][]).map((r) => r.map(scalar).join(" ")).join("\n");
+    return v.map(scalar).join(" ");
+  }
+  return typeof v === "string" ? v : scalar(v);
+}
+
+const ASSIGN = /^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/;
+
+/** Converts "a = [1,2], k = 3" to stdin, or returns null if it isn't that shape. */
+export function assignmentsToStdin(input: string): string | null {
+  const parts = splitTopLevel(input);
+  if (!parts.length || !parts.every((p) => ASSIGN.test(p))) return null;
+  return parts.map((p) => encodeValue(parseValue(ASSIGN.exec(p)![2]))).join("\n");
+}
+
+export const CONVERTED_NOTE =
+  "**Input on stdin:** the examples were written as `name = value`. Your program reads each value on its own line, in the order shown: a number or string as-is, a list as its length on one line and then its items separated by spaces, and a grid as `rows cols` and then one row per line. Print a list as its items separated by spaces.";
+
+/* ---- tables: | Input | Output | ---- */
+
+function tableExamples(lines: string[]): PaperExample[] {
   const out: PaperExample[] = [];
+  const cells = (l: string) =>
+    l.trim().replace(/^\||\|$/g, "").split("|").map((c) => unescapeMd(c.trim().replace(/<br\s*\/?>/gi, "\n").replace(/^`|`$/g, "")));
+  for (let i = 0; i + 2 < lines.length; i++) {
+    if (!/^\s*\|/.test(lines[i]) || !/^\s*\|?\s*:?-{2,}/.test(lines[i + 2 - 1])) continue;
+    const head = cells(lines[i]).map((h) => h.toLowerCase().replace(/[*_]/g, ""));
+    const ci = head.findIndex((h) => /\b(input|stdin|i\/p)\b/.test(h));
+    const co = head.findIndex((h) => /\b(output|stdout|o\/p)\b/.test(h));
+    if (ci < 0 || co < 0) continue;
+    for (let j = i + 2; j < lines.length && /^\s*\|/.test(lines[j]); j++) {
+      const row = cells(lines[j]);
+      if (row[ci]?.trim() && row[co]?.trim()) out.push({ input: row[ci].trim(), output: row[co].trim() });
+    }
+  }
+  return out;
+}
+
+/** Splits "Input: 5 Output: 25" written on one line into two lines. */
+function splitInline(lines: string[]): string[] {
+  return lines.flatMap((l) => {
+    if (!/\b(input|i\/p)\s*[:：=]/i.test(l)) return [l];
+    return l.split(/[,;]?\s+(?=(?:\*\*)?(?:expected\s+)?(?:output|o\/p|explanation)(?:\*\*)?\s*[:：=])/i);
+  });
+}
+
+/**
+ * Finds example input/output pairs in a question's text: "Sample Input" /
+ * "Sample Output" blocks, "Input:"/"Output:" (also I/P, O/P, stdin, Expected
+ * Output), fenced code blocks, Input|Output tables, and LeetCode-style
+ * "nums = [..]" examples (converted to stdin; see CONVERTED_NOTE).
+ */
+export function findExamples(text: string): PaperExample[] & { converted?: boolean } {
+  const lines = splitInline(normalizeNewlines(text).split("\n"));
+  const out: PaperExample[] & { converted?: boolean } = [];
   let pendingInput: string | null = null;
   for (let i = 0; i < lines.length; i++) {
     const lab = labelOf(lines[i]);
     if (!lab || lab.format) continue;
     if (lab.kind === "stop") continue;
-    const { text: block, next } = readBlock(lines, i + 1, lab.rest);
+    const { text: block, next } = readBlock(lines, i + 1, lab.rest, lab.strong);
     if (lab.kind === "input") pendingInput = block;
     else if (pendingInput !== null) {
-      if (pendingInput.trim() && block.trim() && !isAssignmentStyle(pendingInput)) {
-        out.push({ input: pendingInput, output: block });
+      if (pendingInput.trim() && block.trim()) {
+        const stdin = assignmentsToStdin(pendingInput);
+        if (stdin !== null) {
+          out.push({ input: stdin, output: encodeOutput(block) });
+          out.converted = true;
+        } else out.push({ input: pendingInput, output: block });
       }
       pendingInput = null;
     }
     i = Math.max(i, next - 1);
     if (out.length >= 10) break;
   }
+  if (out.length === 0) out.push(...tableExamples(lines).slice(0, 10));
   return out;
+}
+
+/* ---- putting line breaks back from the Input Format section ---- */
+
+const NUMBER_WORDS: Record<string, number> = { a: 1, an: 1, one: 1, single: 1, "a single": 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+const ITEM = String.raw`(?:space[- ]separated\s+|positive\s+|non-negative\s+|distinct\s+)*(?:integers?|numbers?|values?|strings?|words?|elements?|characters?)`;
+const BY_VAR = new RegExp(String.raw`\b([A-Z][A-Za-z0-9_]*)\s+${ITEM}\b`);
+const BY_COUNT = new RegExp(String.raw`\b(a single|a|an|one|single|two|three|four|five|six|\d+)\s+${ITEM}\b\s*((?:[A-Z][A-Za-z0-9_]*)(?:\s*(?:,|and|&)\s*[A-Z][A-Za-z0-9_]*)*)?`, "i");
+const LINE_REF = /\b(first|second|third|fourth|fifth|sixth|seventh|next|last|\d+(?:st|nd|rd|th))\s+line\b/i;
+
+type LineSpec = { count: number | string; names: string[] };
+
+/** Reads "The first line contains N and M…" lines of an Input Format section. */
+function inputLineSpecs(statement: string): LineSpec[] | null {
+  const lines = statement.split("\n");
+  const start = lines.findIndex((l) => /^\W*input\s*(format|specification|description)\b/i.test(bare(l)));
+  if (start < 0) return null;
+  const specs: LineSpec[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const l = bare(lines[i]).replace(/^(?:[-*•▪◦·]|l(?=\s+[A-Z]))\s+/, "");
+    if (/^\W*(output|constraints?|sample|example|explanation|note)\b/i.test(l)) break;
+    if (!LINE_REF.test(l)) continue;
+    const rest = l.slice(l.search(LINE_REF));
+    if (/\beach of the\b|\bfollowing\b|\blines\b/i.test(rest)) return null; // "next N lines…": too varied
+    const byCount = BY_COUNT.exec(rest);
+    const byVar = BY_VAR.exec(rest);
+    if (byVar && (!byCount || byVar.index < byCount.index)) specs.push({ count: byVar[1], names: [] });
+    else if (byCount) {
+      const w = byCount[1].toLowerCase();
+      const count = NUMBER_WORDS[w] ?? Number(w);
+      const names = (byCount[2] ?? "").split(/\s*(?:,|and|&)\s*/).filter(Boolean);
+      specs.push({ count, names: names.length === count ? names : [] });
+    } else return null;
+  }
+  return specs.length >= 2 ? specs : null;
+}
+
+/**
+ * PDF text often loses the line breaks inside a sample ("3 3 400 700 200 300
+ * 500 800"). When the input is on fewer lines than the Input Format describes,
+ * re-split its tokens line by line; if the counts don't add up exactly, the
+ * input is left as it was.
+ */
+export function reflowInput(input: string, statement: string): string {
+  const specs = inputLineSpecs(statement);
+  const have = input.trim().split("\n");
+  if (!specs || have.length >= specs.length) return input;
+  const tokens = input.trim().split(/\s+/);
+  const vars: Record<string, number> = {};
+  const out: string[] = [];
+  let k = 0;
+  for (const sp of specs) {
+    const n = typeof sp.count === "number" ? sp.count : vars[sp.count];
+    if (!Number.isInteger(n) || n < 0 || k + n > tokens.length) return input;
+    const take = tokens.slice(k, k + n);
+    sp.names.forEach((name, j) => (vars[name] = Number(take[j])));
+    out.push(take.join(" "));
+    k += n;
+  }
+  return k === tokens.length ? out.join("\n") : input;
 }
 
 /* ---------------------------- API schema -------------------------------- */
@@ -297,6 +509,7 @@ export const PaperExampleSchema = z.strictObject({
 
 export const PaperQuestion = z.strictObject({
   title: z.string().trim().min(1).max(120),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
   statement: z.string().trim().min(1, "a question has no text").max(40_000),
   examples: z.array(PaperExampleSchema).max(10),
 });

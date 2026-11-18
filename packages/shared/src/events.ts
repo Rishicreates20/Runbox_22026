@@ -35,6 +35,8 @@ export const SubmissionRequest = z.strictObject({
   mode: SubmissionMode,
   /** "run" only: raw stdin cases typed in the console (newline-normalised). */
   customInputs: z.array(z.string().max(64 * 1024)).max(6).optional(),
+  /** "run" only: expected output for each custom input ("" = don't check). */
+  customExpected: z.array(z.string().max(64 * 1024)).max(6).optional(),
 });
 export type SubmissionRequest = z.infer<typeof SubmissionRequest>;
 
