@@ -1,0 +1,19 @@
+{
+  "name": "judge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/worker.ts",
+    "migrate": "tsx src/migrate.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codeplus/shared": "*",
+    "ioredis": "^5.8.0",
+    "postgres": "^3.4.7",
+    "tsx": "^4.20.0"
+  },
+  "devDependencies": { "typescript": "^5.9.0", "@types/node": "^22.0.0" }
+}

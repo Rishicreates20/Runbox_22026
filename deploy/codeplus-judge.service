@@ -1,0 +1,19 @@
+[Unit]
+Description=Codeplus judge (runs submissions in runbox)
+After=network-online.target redis-server.service postgresql.service
+Wants=network-online.target
+
+[Service]
+# runbox needs root to create namespaces, overlay mounts and cgroups. The
+# submissions themselves run as an unmapped uid with no capabilities.
+User=root
+WorkingDirectory=/opt/codeplus
+EnvironmentFile=/etc/codeplus.env
+ExecStart=/usr/bin/npm run judge
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

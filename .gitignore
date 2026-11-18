@@ -1,2 +1,9 @@
 runbox
 tests/build/
+node_modules/
+.next/
+web/public/monaco/
+*.tsbuildinfo
+.env*
+!.env.example
+dump.rdb

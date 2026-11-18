@@ -1,0 +1,20 @@
+[Unit]
+Description=Codeplus web (Next.js)
+After=network-online.target redis-server.service postgresql.service
+
+[Service]
+User=codeplus
+Group=codeplus
+WorkingDirectory=/opt/codeplus/web
+EnvironmentFile=/etc/codeplus.env
+Environment=NODE_ENV=production PORT=3000 HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /opt/codeplus/node_modules/next/dist/bin/next start
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/codeplus/web/.next
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

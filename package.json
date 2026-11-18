@@ -1,0 +1,14 @@
+{
+  "name": "codeplus",
+  "private": true,
+  "workspaces": ["packages/shared", "judge", "web"],
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "judge": "npm run start -w judge",
+    "seed": "npm run seed -w judge",
+    "migrate": "npm run migrate -w judge",
+    "typecheck": "npm run typecheck -w @codeplus/shared && npm run typecheck -w judge && npm run typecheck -w web",
+    "test": "npm test -w @codeplus/shared"
+  }
+}

@@ -1,0 +1,148 @@
+asyncapi: 3.0.0
+info:
+  title: Codeplus execution events
+  version: 1.0.0
+  description: |
+    Server-Sent Events stream that reports a submission's progress through
+    the judge. The browser opens it right after `POST /api/submissions`
+    returns `{ "id": "<submissionId>" }`.
+
+    * Every message has an SSE `id` equal to its Redis stream entry id
+      (`<ms>-<seq>`, strictly increasing). After a drop, the browser's
+      EventSource reconnects after `retry` ms and sends `Last-Event-ID`; the
+      server replays only the events after that id, then continues live.
+    * The SSE `event` field is the message's `type`, so clients can
+      `addEventListener("test_result", …)`.
+    * `: heartbeat` comments arrive every 15 s while the stream is idle.
+    * The stream ends after `completed`. Clients should close their
+      EventSource when they receive it, or the browser will reconnect.
+    * Event logs are kept for one hour. After that the stream sends only the
+      stored `completed` event, or `event: expired` if there is none.
+
+    Source of truth for the payload schemas: `packages/shared/src/events.ts`
+    (Zod). Keep this file in sync with it.
+defaultContentType: application/json
+
+servers:
+  web:
+    host: localhost:3000
+    protocol: http
+    description: The Next.js app. In production this is the public HTTPS origin.
+
+channels:
+  execution:
+    address: /api/execution/{submissionId}
+    description: One stream per submission.
+    parameters:
+      submissionId:
+        description: UUID returned by POST /api/submissions.
+    messages:
+      queued: { $ref: "#/components/messages/Queued" }
+      compiling: { $ref: "#/components/messages/Compiling" }
+      running: { $ref: "#/components/messages/Running" }
+      testResult: { $ref: "#/components/messages/TestResult" }
+      completed: { $ref: "#/components/messages/Completed" }
+
+operations:
+  receiveExecutionEvents:
+    action: receive
+    channel: { $ref: "#/channels/execution" }
+    summary: The client receives status updates pushed by the server.
+    messages:
+      - $ref: "#/channels/execution/messages/queued"
+      - $ref: "#/channels/execution/messages/compiling"
+      - $ref: "#/channels/execution/messages/running"
+      - $ref: "#/channels/execution/messages/testResult"
+      - $ref: "#/channels/execution/messages/completed"
+    bindings:
+      http:
+        method: GET
+
+components:
+  messages:
+    Queued:
+      name: queued
+      title: Submission accepted and waiting for a judge slot
+      payload: { $ref: "#/components/schemas/Queued" }
+    Compiling:
+      name: compiling
+      title: Compiler (or Python syntax check) running in the sandbox
+      payload: { $ref: "#/components/schemas/Compiling" }
+    Running:
+      name: running
+      title: A test case started
+      payload: { $ref: "#/components/schemas/Running" }
+    TestResult:
+      name: test_result
+      title: A test case finished
+      payload: { $ref: "#/components/schemas/TestResult" }
+    Completed:
+      name: completed
+      title: Final verdict; last message on the stream
+      payload: { $ref: "#/components/schemas/Completed" }
+
+  schemas:
+    Verdict:
+      type: string
+      enum: [AC, WA, TLE, MLE, RE, OLE, CE, IE]
+      description: |
+        AC accepted, WA wrong answer, TLE time limit (CPU time from cgroup
+        cpu.stat, or wall clock), MLE memory limit (cgroup OOM), RE runtime
+        error (non-zero exit, signal, or a system call blocked by seccomp),
+        OLE output limit, CE compile error, IE internal error.
+    At:
+      type: integer
+      description: Milliseconds since the Unix epoch.
+    Queued:
+      type: object
+      required: [type, at]
+      properties:
+        type: { const: queued }
+        at: { $ref: "#/components/schemas/At" }
+        position: { type: integer, description: Jobs ahead of this one when it was queued. }
+    Compiling:
+      type: object
+      required: [type, at]
+      properties:
+        type: { const: compiling }
+        at: { $ref: "#/components/schemas/At" }
+    Running:
+      type: object
+      required: [type, at, test, total]
+      properties:
+        type: { const: running }
+        at: { $ref: "#/components/schemas/At" }
+        test: { type: integer, minimum: 1 }
+        total: { type: integer }
+    TestResult:
+      type: object
+      required: [type, at, test, total, verdict, timeMs, memoryKb, hidden]
+      properties:
+        type: { const: test_result }
+        at: { $ref: "#/components/schemas/At" }
+        test: { type: integer, minimum: 1 }
+        total: { type: integer }
+        verdict: { $ref: "#/components/schemas/Verdict" }
+        timeMs: { type: number, description: CPU time used. }
+        memoryKb: { type: number, description: Peak memory, -1 if the kernel can't report it. }
+        hidden: { type: boolean, description: Hidden tests carry no input/output fields. }
+        detail: { type: string }
+        displayInput: { type: string }
+        input: { type: string, description: Raw stdin, clipped to 2000 characters. }
+        output: { type: string, description: Program stdout, clipped. }
+        expected: { type: string, description: Absent for custom inputs, which are not checked. }
+        stderr: { type: string }
+    Completed:
+      type: object
+      required: [type, at, verdict, passed, total, timeMs, memoryKb]
+      properties:
+        type: { const: completed }
+        at: { $ref: "#/components/schemas/At" }
+        verdict: { $ref: "#/components/schemas/Verdict" }
+        passed: { type: integer }
+        total: { type: integer }
+        timeMs: { type: number, description: Largest CPU time over the tests. }
+        memoryKb: { type: number, description: Largest peak memory over the tests. }
+        detail: { type: string }
+        compileOutput: { type: string, description: Present when verdict is CE. }
+        failedTest: { type: integer, description: First failing test (1-based). }
