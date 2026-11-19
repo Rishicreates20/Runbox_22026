@@ -1,0 +1,100 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+.logo:hover {
+  color: var(--text);
+}
+
+.logo-mark {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.logo-mark svg {
+  display: block;
+  transition: transform 0.35s var(--ease);
+}
+.logo-plus {
+  transform-origin: 16px 16px;
+  transition: transform 0.45s var(--ease);
+}
+.logo:hover .logo-mark svg {
+  transform: scale(1.06);
+}
+.logo:hover .logo-plus {
+  transform: rotate(90deg);
+}
+
+.logo-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.4);
+}
+.logo-spark-0 {
+  --x: -18px;
+  --y: -16px;
+}
+.logo-spark-1 {
+  --x: 20px;
+  --y: -14px;
+}
+.logo-spark-2 {
+  --x: -20px;
+  --y: 16px;
+}
+.logo-spark-3 {
+  --x: 18px;
+  --y: 17px;
+}
+.logo:hover .logo-spark {
+  animation: logo-spark 0.7s var(--ease) both;
+}
+.logo:hover .logo-spark-1 {
+  animation-delay: 0.04s;
+}
+.logo:hover .logo-spark-2 {
+  animation-delay: 0.08s;
+}
+.logo:hover .logo-spark-3 {
+  animation-delay: 0.12s;
+}
+@keyframes logo-spark {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1);
+  }
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.wordmark-plus {
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--accent);
+  transition: transform 0.45s var(--ease);
+}
+.logo:hover .wordmark-plus {
+  transform: rotate(90deg);
+}

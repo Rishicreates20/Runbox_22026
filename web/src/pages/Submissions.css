@@ -1,0 +1,66 @@
+.subs-page {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 36px clamp(16px, 3vw, 40px) 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.subs-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.subs-page-head h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(28px, 3vw, 36px);
+  letter-spacing: -0.03em;
+}
+.subs-page-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+.verdict-filter {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.verdict-filter .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12px;
+}
+.subs-page-empty {
+  padding: 64px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  color: var(--dim);
+}
+.subs-page-empty p {
+  margin: 0;
+  max-width: 360px;
+  color: var(--muted);
+}
+.subs-page-table {
+  min-width: 760px;
+}
+.subs-verdict {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+}
+.subs-cell {
+  font-size: 13px;
+  color: var(--text-2);
+}
