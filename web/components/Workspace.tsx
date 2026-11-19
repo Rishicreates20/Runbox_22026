@@ -116,8 +116,8 @@ export default function Workspace({ slug, description, starterCode, samples, nav
     setReady(true);
   }, []);
 
-  const { events, done, connectionLost } = useExecution(current?.id ?? null);
-  const running = pending || (current !== null && !done);
+  const { events, done, connectionLost, expired } = useExecution(current?.id ?? null);
+  const running = pending || (current !== null && !done && !expired);
 
   const loadSubmissions = useCallback(async () => {
     const r = await fetch(`/api/submissions?problem=${slug}`, { cache: "no-store" });
@@ -273,6 +273,7 @@ export default function Workspace({ slug, description, starterCode, samples, nav
                 events={events}
                 done={done}
                 connectionLost={connectionLost}
+                expired={expired}
                 active={activeResult}
                 setActive={setActiveResult}
               />
@@ -388,10 +389,11 @@ function ResultView(props: {
   events: ExecEvent[];
   done: Extract<ExecEvent, { type: "completed" }> | undefined;
   connectionLost: boolean;
+  expired: boolean;
   active: number;
   setActive: (i: number) => void;
 }) {
-  const { error, pending, current, events, done, connectionLost, active, setActive } = props;
+  const { error, pending, current, events, done, connectionLost, expired, active, setActive } = props;
   if (error) return <div className="error-banner">{error}</div>;
   if (pending)
     return (
@@ -403,6 +405,9 @@ function ResultView(props: {
 
   const results = events.filter((e): e is TestResult => e.type === "test_result");
   const last = events.at(-1);
+
+  if (!done && expired)
+    return <div className="error-banner">This result is no longer available. Run or submit again.</div>;
 
   if (!done) {
     let text = "Connecting…";

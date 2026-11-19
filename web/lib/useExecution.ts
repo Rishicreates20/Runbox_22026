@@ -13,11 +13,15 @@ const TYPES: ExecEvent["type"][] = ["queued", "compiling", "running", "test_resu
 export function useExecution(id: string | null) {
   const [events, setEvents] = useState<ExecEvent[]>([]);
   const [connectionLost, setConnectionLost] = useState(false);
+  // The server has neither a live event log nor a stored result (e.g. the
+  // judge died and the log's TTL ran out). Nothing more will arrive.
+  const [expired, setExpired] = useState(false);
   const seen = useRef(new Set<string>());
 
   useEffect(() => {
     setEvents([]);
     setConnectionLost(false);
+    setExpired(false);
     seen.current = new Set();
     if (!id) return;
     const es = new EventSource(`/api/execution/${id}`);
@@ -30,11 +34,14 @@ export function useExecution(id: string | null) {
       if (event.type === "completed") es.close(); // otherwise the browser would reconnect
     };
     for (const t of TYPES) es.addEventListener(t, onEvent as EventListener);
-    es.addEventListener("expired", () => es.close());
+    es.addEventListener("expired", () => {
+      es.close();
+      setExpired(true);
+    });
     es.onerror = () => setConnectionLost(es.readyState !== EventSource.CLOSED);
     return () => es.close();
   }, [id]);
 
   const done = events.find((e) => e.type === "completed") as Extract<ExecEvent, { type: "completed" }> | undefined;
-  return { events, done, connectionLost };
+  return { events, done, connectionLost, expired };
 }

@@ -30,7 +30,14 @@ export default async function PaperPage({ params }: { params: Promise<{ id: stri
   const progress = await paperProgress(paper.id, await readClientId());
   const checkable = questions.filter((q) => q.examples > 0).length;
   const solved = questions.filter((q) => progress[q.slug]?.status === "solved").length;
-  const isUrl = /^https?:\/\//.test(paper.source);
+  let host: string | null = null;
+  if (/^https?:\/\//.test(paper.source)) {
+    try {
+      host = new URL(paper.source).hostname;
+    } catch {
+      // Not a parseable URL after all: show it as plain text below.
+    }
+  }
   // The intro often starts with the paper's own title; don't show it twice.
   const intro = paper.intro.replace(/^\s*(?:#+\s*)?(.*)\n?/, (line, first: string) =>
     first.replace(/[*_]/g, "").trim() === paper.title.trim() ? "" : line,
@@ -49,9 +56,9 @@ export default async function PaperPage({ params }: { params: Promise<{ id: stri
         <span>{paper.duration_min} minutes</span>
         <span>
           From{" "}
-          {isUrl ? (
+          {host ? (
             <a href={paper.source} target="_blank" rel="noopener noreferrer nofollow">
-              {new URL(paper.source).hostname}
+              {host}
             </a>
           ) : (
             paper.source
