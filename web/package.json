@@ -3,10 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Code+ — the web frontend for the runbox online judge",
+  "description": "Code+ \u2014 the web frontend for the runbox online judge",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:static": "tsc --noEmit && vite build --mode static --base ./ --outDir dist-static",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },

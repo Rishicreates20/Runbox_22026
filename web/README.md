@@ -8,6 +8,7 @@ npm install
 npm run dev        # http://localhost:5173
 npm run build      # typecheck + production build into dist/
 npm run preview    # serve dist/ locally
+npm run build:static  # hash-routed build in dist-static/ for any static host or sub-path
 ```
 
 Stack: Vite, React 19, TypeScript, React Router 7 and CodeMirror 6. Fonts are self-hosted through Fontsource: Space Grotesk for headings, Inter for body text and JetBrains Mono for code.
