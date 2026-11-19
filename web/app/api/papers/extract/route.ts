@@ -14,6 +14,7 @@ import { MAX_PAPER_FILE_BYTES } from "@codeplus/shared";
 import { ExtractError, extractBytes, extractUrl } from "@/lib/extract";
 import { ensureClientId } from "@/lib/client-id";
 import { overLimit } from "@/lib/rate-limit";
+import { BodyTooLarge, readForm, readJson } from "@/lib/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,22 +36,20 @@ export async function POST(req: NextRequest) {
   const type = req.headers.get("content-type") ?? "";
   try {
     if (type.startsWith("multipart/form-data")) {
-      if (Number(req.headers.get("content-length") ?? 0) > MAX_PAPER_FILE_BYTES + 64 * 1024) {
-        return fail("The file is larger than 15 MB.", 413);
-      }
-      const form = await req.formData();
+      const form = await readForm(req, MAX_PAPER_FILE_BYTES + 64 * 1024);
       const file = form.get("file");
       if (!(file instanceof File)) return fail("No file was uploaded.");
       if (file.size > MAX_PAPER_FILE_BYTES) return fail("The file is larger than 15 MB.", 413);
       const r = await extractBytes(Buffer.from(await file.arrayBuffer()), file.name, file.type);
       return NextResponse.json({ ...r, source: file.name || "uploaded file" });
     }
-    const parsed = JsonBody.safeParse(await req.json().catch(() => null));
+    const parsed = JsonBody.safeParse((await readJson(req, 4 * 1024 * 1024)) ?? null);
     if (!parsed.success) return fail("Send a file, {\"url\": …} or {\"text\": …}.");
     if ("url" in parsed.data) return NextResponse.json(await extractUrl(parsed.data.url));
     return NextResponse.json({ text: parsed.data.text, title: "", kind: "text", source: "pasted text" });
   } catch (e) {
     if (e instanceof ExtractError) return fail(e.message, 422);
+    if (e instanceof BodyTooLarge) return fail("The file is larger than 15 MB.", 413);
     console.error("paper extract failed", e);
     return fail("Something went wrong reading that document.", 500);
   }

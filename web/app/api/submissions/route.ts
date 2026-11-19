@@ -3,6 +3,7 @@ import { ProblemSlug, SubmissionRequest, enqueueSubmission } from "@codeplus/sha
 import { sql } from "@/lib/db";
 import { redis } from "@/lib/redis";
 import { overLimit } from "@/lib/rate-limit";
+import { BodyTooLarge, readJson } from "@/lib/body";
 import { ensureClientId, readClientId } from "@/lib/client-id";
 
 export const runtime = "nodejs";
@@ -14,10 +15,12 @@ const LIMIT_PER_MINUTE = 20;
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
+    body = await readJson(req, 2 * 1024 * 1024);
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return NextResponse.json({ error: "request too large" }, { status: 413 });
+    throw e;
   }
+  if (body === undefined) return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
   const parsed = SubmissionRequest.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid submission", issues: parsed.error.issues }, { status: 400 });

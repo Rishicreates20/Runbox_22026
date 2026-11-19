@@ -17,7 +17,7 @@ sequenceDiagram
     B->>W: POST /api/submissions (Zod-validated)
     W->>P: INSERT submission (status=queued)
     W->>R: LPUSH codeplus:queue job
-    W-->>B: 202 {submissionId}
+    W-->>B: 202 {id}
     B->>W: GET /api/execution/{id} (SSE)
     W->>R: XRANGE replay, then PSUBSCRIBE (shared connection)
     J->>R: BLMOVE queue -> processing:{slot}
@@ -45,7 +45,7 @@ sequenceDiagram
 | `papers` | an imported mock paper: title, source, time limit, owning browser |
 | `submissions` | anonymous client id, language, code, mode (run/submit), verdict, tests passed, runtime, memory, timestamps |
 
-Redis holds the job queue (`codeplus:queue` plus one processing list per worker slot), a stream per submission with a one-hour TTL, the `codeplus:exec:*` pub/sub channels and the rate-limit counters. Nothing in Redis is needed after a submission completes, so it runs without persistence.
+Redis holds the job queue (`codeplus:queue` plus one processing list per worker slot), a stream per submission with a one-hour TTL, the `codeplus:exec:*` pub/sub channels and the rate-limit counters. Nothing in Redis is needed after a submission completes, but the queue matters while jobs wait, so the Compose stack turns on the append-only file.
 
 ## Design notes, component by component
 
@@ -62,7 +62,7 @@ Redis holds the job queue (`codeplus:queue` plus one processing list per worker 
 
 All objects are strict, so unknown fields are rejected. A refinement requires Python's time limit to be at least the C/C++ one. Problem slugs and submission ids are branded types. Every test is stored twice: `input` (raw stdin, CRLF → LF, ending in a newline) and `display_input` (what the page shows). For the typed kinds both are produced from `args` by one canonical encoder, so authors never hand-write stdin. On the queue, code and test data are base64.
 
-Upload problem JSON at `/admin` (not linked from the menu) or `POST /api/problems`. `?dryRun=1` validates and previews without saving and needs no token. Saving needs `Authorization: Bearer $ADMIN_TOKEN`.
+Upload problem JSON at `/admin` (not linked from the menu) or `POST /api/problems`. `?dryRun=1` validates and previews without saving. Both need `Authorization: Bearer $ADMIN_TOKEN`, because validation runs author-supplied regexes. Every public endpoint reads its body through a size-capped reader (`web/lib/body.ts`), so a chunked request without `Content-Length` can't make the server buffer an unbounded body.
 
 **SSE + Redis.** The judge appends each event to a per-submission Redis stream and publishes it, in one Lua script. The stream entry id is the SSE `id`. `GET /api/execution/{id}`:
 

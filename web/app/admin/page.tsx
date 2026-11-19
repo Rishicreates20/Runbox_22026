@@ -9,8 +9,8 @@ export default function AdminPage() {
       <h1>Upload a problem</h1>
       <p className="hint">
         Paste a problem as JSON. It is validated against the same Zod schema the API uses (see{" "}
-        <code>packages/shared/src/problem.ts</code> and the files in <code>problems/</code>). Validating needs no
-        token; saving needs the server&apos;s <code>ADMIN_TOKEN</code>.
+        <code>packages/shared/src/problem.ts</code> and the files in <code>problems/</code>). Validating and
+        saving both need the server&apos;s <code>ADMIN_TOKEN</code>.
       </p>
       <UploadForm />
     </main>

@@ -142,6 +142,9 @@ export async function enqueueSubmission(
     const inputs = req.customInputs?.length
       ? req.customInputs.map(normalizeNewlines)
       : samples.map((s) => s.input);
+    if (inputs.length === 0) {
+      return { error: "This question has no sample input. Type an input in the Testcase tab and run again.", status: 400 };
+    }
     tests = inputs.map((input, ordinal) => {
       const known = samples.find((s) => s.input === input);
       const typed = req.customInputs?.length ? req.customExpected?.[ordinal] : undefined;

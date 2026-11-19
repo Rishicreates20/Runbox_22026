@@ -31,7 +31,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # AOF on, so queued jobs and in-flight processing lists survive a restart.
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes: [redisdata:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -80,3 +82,4 @@ services:
 
 volumes:
   pgdata:
+  redisdata:

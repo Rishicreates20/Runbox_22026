@@ -4,6 +4,7 @@ import { ProblemIngest, upsertProblem } from "@codeplus/shared";
 import { sql } from "@/lib/db";
 import { listProblems } from "@/lib/problems";
 import { readClientId } from "@/lib/client-id";
+import { BodyTooLarge, readJson } from "@/lib/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,19 +24,21 @@ export async function GET() {
 /**
  * POST /api/problems: upload a problem (Zod-validated ProblemUpload).
  * ?dryRun=1 validates and returns the normalised test preview without
- * saving, and needs no token. Saving needs `Authorization: Bearer ADMIN_TOKEN`.
+ * saving. Both need `Authorization: Bearer ADMIN_TOKEN`: validation runs
+ * author-supplied regexes (string_parsing), which must not be exposed to
+ * anonymous callers.
  */
 export async function POST(req: NextRequest) {
   const dryRun = req.nextUrl.searchParams.get("dryRun") === "1";
-  if (!dryRun && !authorized(req)) return NextResponse.json({ error: "admin token required" }, { status: 401 });
-  if (Number(req.headers.get("content-length") ?? 0) > 64 * 1024 * 1024)
-    return NextResponse.json({ error: "upload larger than 64 MB" }, { status: 413 });
+  if (!authorized(req)) return NextResponse.json({ error: "admin token required" }, { status: 401 });
   let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
+    body = await readJson(req, 64 * 1024 * 1024);
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return NextResponse.json({ error: "upload larger than 64 MB" }, { status: 413 });
+    throw e;
   }
+  if (body === undefined) return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
   const parsed = ProblemIngest.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

@@ -16,7 +16,7 @@
  */
 import type { NextRequest } from "next/server";
 import { ExecEvent, SubmissionId, keys } from "@codeplus/shared";
-import { redis, subscribe } from "@/lib/redis";
+import { redis, subscribe, subscriberReady } from "@/lib/redis";
 import { sql } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -45,11 +45,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ submissionI
   // submissions, fall back to the stored result.
   const logExists = (await redis.exists(keys.events(id))) === 1;
   let stored: ExecEvent | null = null;
+  let gone = false;
   if (!logExists) {
     const [row] = await sql<{ status: string; result: ExecEvent | null }[]>`
       SELECT status, result FROM submissions WHERE id = ${id}`;
     if (!row) return new Response("submission not found", { status: 404 });
     stored = row.result;
+    // Still queued or running (e.g. it waited in the queue past the log's
+    // TTL): follow it live instead of declaring it expired.
+    gone = !stored && row.status === "done";
   }
 
   const enc = new TextEncoder();
@@ -89,7 +93,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ submissionI
 
         write(`retry: ${RETRY_MS}\n\n`);
 
-        if (stored || !logExists) {
+        if (stored || gone) {
           // Finished long ago (or never produced events): one synthetic event.
           if (stored) write(`id: ${stored.at}-0\nevent: ${stored.type}\ndata: ${JSON.stringify(stored)}\n\n`);
           else write(`event: expired\ndata: {}\n\n`);
@@ -126,6 +130,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ submissionI
 
         // Replay everything after Last-Event-ID from the durable log.
         try {
+          await subscriberReady();
           const entries = (await redis.xrange(keys.events(id), `(${resumeFrom}`, "+")) as [string, string[]][];
           for (const [eid, fields] of entries) send(eid, ExecEvent.parse(JSON.parse(fields[1])));
         } catch (e) {

@@ -8,12 +8,20 @@ import { sql } from "@/lib/db";
 import { ensureClientId, readClientId } from "@/lib/client-id";
 import { listPapers } from "@/lib/problems";
 import { overLimit } from "@/lib/rate-limit";
+import { BodyTooLarge, readJson } from "@/lib/body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const parsed = PaperCreate.safeParse(await req.json().catch(() => null));
+  let body: unknown;
+  try {
+    body = await readJson(req, 8 * 1024 * 1024);
+  } catch (e) {
+    if (e instanceof BodyTooLarge) return NextResponse.json({ error: "paper too large" }, { status: 413 });
+    throw e;
+  }
+  const parsed = PaperCreate.safeParse(body ?? null);
   if (!parsed.success) {
     const i = parsed.error.issues[0];
     return NextResponse.json(

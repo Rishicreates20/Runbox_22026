@@ -64,6 +64,8 @@ async function compile(job: JudgeJob, dir: string): Promise<Compiled> {
       rootfs: config.runRootfs, timeMs: 5000, memMb: 256, files: [[src, box]],
       argv: ["/usr/bin/python3", "-c", `compile(open(${JSON.stringify(box)}).read(), "main.py", "exec")`],
     });
+    // IE is the sandbox failing (missing image, setup error), not the code.
+    if (r.verdict === "IE") throw new Error(`sandbox error during syntax check: ${r.detail}`);
     const ok = r.verdict === "OK";
     return { ok, output: ok ? "" : cleanCompilerOutput(r), files: [[src, box]], argv: ["/usr/bin/python3", box] };
   }
@@ -76,6 +78,7 @@ async function compile(job: JudgeJob, dir: string): Promise<Compiled> {
     rootfs: config.compileRootfs, timeMs: 15_000, wallMs: 30_000, memMb: 1024, pids: 32,
     output: "64M", files: [[src, box]], exports: [["/box/prog", prog]], argv: cc,
   });
+  if (r.verdict === "IE") throw new Error(`sandbox error during compile: ${r.detail}`);
   const ok = r.verdict === "OK" && r.exported;
   return { ok, output: cleanCompilerOutput(r), files: [[prog, "/box/prog"]], argv: ["/box/prog"] };
 }

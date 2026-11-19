@@ -33,26 +33,35 @@ async function slot(i: number) {
     }
     const job = parsed.data;
     const t0 = Date.now();
+    let done: Completed;
     try {
-      const done = await judge(job, sql, redis);
+      done = await judge(job, sql, redis);
+    } catch (e) {
+      console.error(`${job.submissionId} failed:`, e);
+      done = {
+        type: "completed", at: Date.now(), verdict: "IE", passed: 0, total: 0,
+        timeMs: 0, memoryKb: 0, detail: "The judge hit an internal error. Try again.",
+      };
+    }
+    try {
       await sql`
         UPDATE submissions SET status = 'done', verdict = ${done.verdict}, passed = ${done.passed},
           total = ${done.total}, time_ms = ${done.timeMs}, memory_kb = ${done.memoryKb},
           result = ${sql.json(done)}, finished_at = now()
         WHERE id = ${job.submissionId}`;
-      await publishEvent(redis, job.submissionId, done);
-      console.log(`${job.submissionId} ${job.problemSlug} ${job.language} ${job.mode}: ${done.verdict} ` +
-        `${done.passed}/${done.total} in ${Date.now() - t0} ms (queued ${t0 - job.enqueuedAt} ms)`);
     } catch (e) {
-      console.error(`${job.submissionId} failed:`, e);
-      const done: Completed = {
-        type: "completed", at: Date.now(), verdict: "IE", passed: 0, total: 0,
-        timeMs: 0, memoryKb: 0, detail: "The judge hit an internal error. Try again.",
-      };
-      await sql`UPDATE submissions SET status = 'done', verdict = 'IE', result = ${sql.json(done)},
-                finished_at = now() WHERE id = ${job.submissionId}`.catch(() => {});
+      // Postgres is unreachable: keep the job in this slot's processing list
+      // so it is requeued when the worker restarts, instead of losing it.
+      console.error(`${job.submissionId}: could not store result, leaving job for retry:`, e);
       await publishEvent(redis, job.submissionId, done).catch(() => {});
+      continue;
     }
+    // The verdict is stored; a failed publish only affects the live view
+    // (the SSE endpoint falls back to the stored row), never the verdict.
+    await publishEvent(redis, job.submissionId, done).catch((e) =>
+      console.error(`${job.submissionId}: publish failed:`, e));
+    console.log(`${job.submissionId} ${job.problemSlug} ${job.language} ${job.mode}: ${done.verdict} ` +
+      `${done.passed}/${done.total} in ${Date.now() - t0} ms (queued ${t0 - job.enqueuedAt} ms)`);
     await conn.lrem(processing, 1, raw);
   }
   conn.disconnect();

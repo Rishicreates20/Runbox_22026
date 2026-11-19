@@ -37,7 +37,7 @@ What runs:
 | service | image | notes |
 |---|---|---|
 | `postgres` | `postgres:16-alpine` | data in the `pgdata` volume |
-| `redis` | `redis:7-alpine` | persistence off on purpose |
+| `redis` | `redis:7-alpine` | append-only file on (`redisdata` volume), so queued jobs survive a restart |
 | `migrate` | `codeplus-judge` | one shot: applies `db/schema.sql`, seeds `problems/*.json`, exits |
 | `judge` | `codeplus-judge` | `privileged`, own cgroup namespace, tmpfs for job dirs |
 | `web` | `codeplus-web` | Next.js standalone server, non-root, port `WEB_PORT` (3000) |
@@ -83,7 +83,7 @@ sudo certbot --nginx -d codeplus.example.com
 | restart | `systemctl restart codeplus-judge codeplus-web` |
 | upgrade | `cd /opt/codeplus && git pull && npm ci && npm run migrate && npm run build && systemctl restart codeplus-judge codeplus-web` |
 | rebuild sandbox images (after an OS upgrade changes gcc or Python) | `make && scripts/make-rootfs.sh /var/lib/runbox/rootfs --python /usr/bin/python3 && scripts/make-rootfs.sh /var/lib/runbox/rootfs-gcc --python /usr/bin/python3 --gcc` |
-| backup | `sudo -u postgres pg_dump codeplus \| gzip > codeplus-$(date +%F).sql.gz` (Redis holds nothing that needs backing up) |
+| backup | `sudo -u postgres pg_dump codeplus \| gzip > codeplus-$(date +%F).sql.gz` (Redis only holds in-flight jobs and short-lived event logs; no backup needed) |
 | add problems | `POST /api/problems` with `Authorization: Bearer $ADMIN_TOKEN`, or `npm run seed -- path/to/problem.json` |
 | verify cgroup v2 | `sudo python3 tests/run_tests.py --cgroup v2` |
 

@@ -62,7 +62,7 @@ export default function UploadForm() {
     <>
       <textarea className="mono" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
       <div className="row">
-        <button className="btn" disabled={busy} onClick={() => send(true)}>
+        <button className="btn" disabled={busy || !token} onClick={() => send(true)}>
           Validate
         </button>
         <input type="password" placeholder="Admin token" value={token} onChange={(e) => setToken(e.target.value)} />

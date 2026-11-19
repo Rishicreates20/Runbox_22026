@@ -102,7 +102,7 @@ runbox (host root)       supervisor: job dir, cgroup, uid/gid maps,
 
 ## Test results
 
-All runs were on the build host: Linux 6.18, x86_64, ext4, root. `tests/run_tests.py` passed **20/20**:
+All runs were on the build host: Linux 6.18, x86_64, ext4, root. `tests/run_tests.py` passed **22/22** (the table lists the original 20; the two `--export` checks were added with the compile step):
 
 | test | verdict | notes |
 |---|---|---|

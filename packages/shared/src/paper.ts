@@ -111,7 +111,7 @@ function headingMarkers(lines: string[]): Marker[] {
   const byLevel = new Map<number, Marker[]>();
   let inFence = false;
   lines.forEach((l, i) => {
-    if (/^\s*```/.test(l)) inFence = !inFence;
+    if (/^\s*(```|~~~)/.test(l)) inFence = !inFence;
     const m = !inFence && HEADING.exec(l);
     if (!m) return;
     const level = m[1].length;
@@ -311,11 +311,13 @@ function readBlock(lines: string[], start: number, first: string, strong: boolea
 
 function splitTopLevel(s: string): string[] {
   const parts: string[] = [];
-  let depth = 0, quote = "", cur = "";
+  let depth = 0, quote = "", cur = "", escaped = false;
   for (const ch of s) {
     if (quote) {
       cur += ch;
-      if (ch === quote) quote = "";
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = "";
       continue;
     }
     if (ch === '"' || ch === "'") quote = ch;
@@ -331,7 +333,9 @@ function splitTopLevel(s: string): string[] {
 }
 
 function parseValue(raw: string): unknown {
-  const t = raw.trim();
+  // Integers past 2^53 would be rounded by JSON.parse; quote them so they
+  // come through digit for digit.
+  const t = raw.trim().replace(/(^|[\[,\s:])(-?\d{16,})(?=$|[\],\s])/g, '$1"$2"');
   try {
     return JSON.parse(t);
   } catch {}
@@ -403,7 +407,7 @@ function tableExamples(lines: string[]): PaperExample[] {
 function splitInline(lines: string[]): string[] {
   return lines.flatMap((l) => {
     if (!/\b(input|i\/p)\s*[:：=]/i.test(l)) return [l];
-    return l.split(/[,;]?\s+(?=(?:\*\*)?(?:expected\s+)?(?:output|o\/p|explanation)(?:\*\*)?\s*[:：=])/i);
+    return l.split(/[,;]?\s+(?=(?:\*\*)?(?:sample\s+|expected\s+)?(?:output|o\/p|explanation)(?:\*\*)?\s*[:：=])/i);
   });
 }
 
