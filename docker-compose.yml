@@ -1,0 +1,80 @@
+# Full Codeplus stack: Postgres, Redis, a one-shot migrate/seed job, the
+# Next.js web app and the judge worker.
+#
+#   cp .env.example .env        # then set ADMIN_TOKEN and POSTGRES_PASSWORD
+#   docker compose up -d --build
+#   open http://localhost:3000
+#
+# The judge runs privileged because runbox (the sandbox) creates namespaces,
+# OverlayFS mounts and cgroups. Only run it on a host you control.
+
+x-db-env: &db-env
+  DATABASE_URL: postgres://codeplus:${POSTGRES_PASSWORD:-codeplus}@postgres:5432/codeplus
+  REDIS_URL: redis://redis:6379
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: codeplus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-codeplus}
+      POSTGRES_DB: codeplus
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeplus"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: judge }
+    image: codeplus-judge
+    environment: *db-env
+    command: ["sh", "-c", "npm run migrate && npm run seed"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  judge:
+    image: codeplus-judge
+    restart: unless-stopped
+    privileged: true
+    # Own cgroup namespace, so runbox's per-job cgroups stay inside the
+    # container's cgroup (see docker/judge-entrypoint.sh).
+    cgroup: private
+    environment:
+      <<: *db-env
+      JUDGE_CONCURRENCY: ${JUDGE_CONCURRENCY:-2}
+      # Stable name: in-flight jobs are kept in a processing list keyed by it,
+      # and requeued when a worker with the same name starts again.
+      JUDGE_NAME: judge
+    # runbox's per-job OverlayFS upperdirs can't live on the container's own
+    # overlay root, so they go on tmpfs.
+    tmpfs: ["/tmp/runbox", "/var/lib/codeplus"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    image: codeplus-web
+    restart: unless-stopped
+    environment:
+      <<: *db-env
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
+    ports: ["${WEB_PORT:-3000}:3000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+volumes:
+  pgdata:

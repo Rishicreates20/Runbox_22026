@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Typecheck, unit tests, web build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env: { NEXT_TELEMETRY_DISABLED: 1 }
+
+  sandbox:
+    name: runbox sandbox + judge end-to-end
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: codeplus, POSTGRES_PASSWORD: codeplus, POSTGRES_DB: codeplus }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U codeplus" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://codeplus:codeplus@127.0.0.1:5432/codeplus
+      REDIS_URL: redis://127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: Build runbox (warnings are errors)
+        run: make
+        env: { CFLAGS: "-O2 -g -Werror" }
+      - name: Build sandbox images
+        run: |
+          sudo scripts/make-rootfs.sh /var/lib/runbox/rootfs --python /usr/bin/python3
+          sudo scripts/make-rootfs.sh /var/lib/runbox/rootfs-gcc --python /usr/bin/python3 --gcc
+      - name: Host cgroup layout
+        run: stat -fc %T /sys/fs/cgroup && cat /sys/fs/cgroup/cgroup.controllers || true
+      # GitHub's Ubuntu 24.04 runners use the unified cgroup v2 hierarchy,
+      # so this exercises runbox's v2 path on every push.
+      - name: Sandbox tests (cgroup v2)
+        run: sudo python3 tests/run_tests.py --cgroup v2
+      - run: npm ci --no-audit --no-fund
+      - run: npm run migrate && npm run seed
+      - name: Judge end-to-end (real queue, real sandbox)
+        run: |
+          sudo -E env "PATH=$PATH" npm run judge > judge.log 2>&1 &
+          sleep 5
+          sudo -E env "PATH=$PATH" npx tsx judge/test/e2e.ts
+      - name: Judge log
+        if: always()
+        run: cat judge.log || true
+
+  docker:
+    name: Docker images
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with: { context: ., target: web, tags: codeplus-web:ci, push: false, cache-from: type=gha, cache-to: "type=gha,mode=max" }
+      - name: Build judge image
+        uses: docker/build-push-action@v6
+        with: { context: ., target: judge, tags: codeplus-judge:ci, push: false, load: true, cache-from: type=gha }
+      - name: Sandbox tests inside the judge container
+        run: docker run --rm --privileged --cgroupns private --tmpfs /tmp/runbox codeplus-judge:ci python3 tests/run_tests.py

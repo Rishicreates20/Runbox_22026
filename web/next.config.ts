@@ -7,6 +7,8 @@ const config: NextConfig = {
   // So are the document parsers used to import mock papers.
   serverExternalPackages: ["ioredis", "postgres", "mammoth", "turndown", "turndown-plugin-gfm", "jszip", "unpdf"],
   poweredByHeader: false,
+  // The Docker image ships the self-contained server (Dockerfile sets this).
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
 };
 
 export default config;

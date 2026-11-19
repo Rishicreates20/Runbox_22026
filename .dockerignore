@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/.next
+web/public/monaco
+runbox
+tests/build
+*.tsbuildinfo
+.env*
+!**/.env.example
+docs/screenshots
