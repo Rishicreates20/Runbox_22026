@@ -1,0 +1,163 @@
+.burst {
+  --beat: calc(3.6s / 3);
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  container-type: inline-size;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Faint orbit lines that slowly turn behind everything. */
+.burst-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  border: 1px dashed #1f2530;
+  transform: translate(-50%, -50%);
+  animation: burst-orbit 80s linear infinite;
+}
+.burst-orbit-1 {
+  width: 56cqi;
+  height: 56cqi;
+}
+.burst-orbit-2 {
+  width: 88cqi;
+  height: 88cqi;
+  border-color: #181d25;
+  animation-direction: reverse;
+  animation-duration: 120s;
+}
+@keyframes burst-orbit {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* The beating tile. */
+.burst-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24cqi;
+  height: 24cqi;
+  transform: translate(-50%, -50%);
+  animation: burst-pop 0.9s var(--ease) both;
+}
+.burst-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 25%;
+  box-shadow:
+    0 0 0 1px rgba(200, 240, 49, 0.25),
+    0 18px 60px -12px rgba(200, 240, 49, 0.45);
+  animation: burst-beat var(--beat) var(--ease) 0.2s infinite;
+}
+@keyframes burst-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2) rotate(-90deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+}
+@keyframes burst-beat {
+  0% {
+    transform: scale(1);
+  }
+  10% {
+    transform: scale(1.12);
+  }
+  24% {
+    transform: scale(0.95);
+  }
+  40%,
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Shock rings that leave the tile on each beat. */
+.burst-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24cqi;
+  height: 24cqi;
+  border-radius: 25%;
+  border: 1.5px solid rgba(200, 240, 49, 0.55);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  animation: burst-ring var(--beat) cubic-bezier(0.1, 0.6, 0.3, 1) 0.2s infinite;
+}
+.burst-ring-2 {
+  border-color: rgba(200, 240, 49, 0.25);
+  animation-delay: 0.32s;
+}
+@keyframes burst-ring {
+  0% {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(3.2);
+    border-radius: 50%;
+  }
+}
+
+/* Code fragments: start inside the tile, shoot out along their angle, fade. */
+.burst-token {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-family: var(--font-mono);
+  font-size: clamp(10px, var(--fs), 17px);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(var(--a)) translateX(3cqi) rotate(calc(-1 * var(--a))) scale(0.3);
+  animation: burst-fly var(--dur) cubic-bezier(0.12, 0.75, 0.25, 1) calc(var(--delay) + 0.2s) infinite;
+  will-change: transform, opacity;
+}
+@keyframes burst-fly {
+  0% {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translate(-50%, -50%) rotate(var(--a)) translateX(3cqi) rotate(calc(-1 * var(--a))) scale(0.3);
+  }
+  8% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  62% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    filter: blur(0);
+    transform: translate(-50%, -50%) rotate(var(--a)) translateX(var(--d)) rotate(calc(-1 * var(--a))) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burst-token {
+    animation: none !important;
+    opacity: 0.6;
+    transform: translate(-50%, -50%) rotate(var(--a)) translateX(calc(var(--d) * 0.8)) rotate(calc(-1 * var(--a)));
+  }
+  .burst-ring,
+  .burst-orbit,
+  .burst-mark,
+  .burst-core {
+    animation: none !important;
+  }
+  .burst-ring {
+    display: none;
+  }
+}

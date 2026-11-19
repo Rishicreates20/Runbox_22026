@@ -131,3 +131,11 @@ The overhead is about 7–8 ms per run end to end. 16 jobs run concurrently fini
 * The rootfs must not contain secrets, because everything in it is readable by submissions. Build one rootfs per language image and keep it read-only.
 * Compile submissions inside runbox too, with a larger `--time`, `--mem` and `--pids`, a rootfs that has the compiler, and `--output` on the compiler's stderr. Compilers are untrusted-input parsers as well.
 * `execve` is allowed so that interpreters and wrapper scripts work. The jail, `pids.max` and the filter still apply to anything that gets exec'd.
+
+## Web frontend
+
+`web/` holds Code+, the React frontend that sends submissions to this sandbox. It has sign-in, the problem set, and a code workspace with live, test-by-test verdicts. Without a backend it runs in demo mode with a simulated judge. See [web/README.md](web/README.md).
+
+```
+cd web && npm install && npm run dev
+```
