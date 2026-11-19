@@ -18,8 +18,8 @@ jobs:
     name: Typecheck, unit tests, web build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
@@ -46,8 +46,8 @@ jobs:
       DATABASE_URL: postgres://codeplus:codeplus@127.0.0.1:5432/codeplus
       REDIS_URL: redis://127.0.0.1:6379
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - name: Build runbox (warnings are errors)
         run: make
@@ -77,7 +77,7 @@ jobs:
     name: Docker images
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - name: Build web image
         uses: docker/build-push-action@v6

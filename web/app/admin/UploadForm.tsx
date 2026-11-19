@@ -44,13 +44,18 @@ export default function UploadForm() {
       setBusy(false);
       return;
     }
-    const res = await fetch(`/api/problems${dryRun ? "?dryRun=1" : ""}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: text,
-    });
-    setResult(await res.json().catch(() => ({ error: `Request failed (${res.status})` })));
-    setBusy(false);
+    try {
+      const res = await fetch(`/api/problems${dryRun ? "?dryRun=1" : ""}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: text,
+      });
+      setResult(await res.json().catch(() => ({ error: `Request failed (${res.status})` })));
+    } catch (e) {
+      setResult({ error: `Network error: ${(e as Error).message}` });
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

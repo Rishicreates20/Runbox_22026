@@ -160,7 +160,7 @@ This is a working project, not a hosted product yet. Being upfront about what is
 
 - **No user accounts.** Submissions and mock papers are tied to an anonymous browser cookie. Anyone with a paper's link can open it.
 - **Languages:** C++17, C11 and Python 3. Java isn't offered yet because the seccomp allowlist hasn't been tuned for the JVM.
-- **cgroup v2:** the development host only had cgroup v1, so the limits were first verified through runbox's v1 fallback. CI now runs the full sandbox suite on GitHub's cgroup v2 runners with `--cgroup v2`.
+- **cgroup v2** is verified in CI on GitHub's Ubuntu 24.04 runners, both on the host (`--cgroup v2`) and inside the Docker judge image. The original development host only had cgroup v1, which runbox also supports.
 - **x86_64 only.** The seccomp filter is pinned to the x86_64 syscall ABI.
 - **Mock papers** use default limits (2 s for C/C++, 6 s for Python, 256 MB) and are checked only against the sample cases found in the text. Scanned PDFs without a text layer can't be read.
 - **No live deployment yet.** The judge needs a Linux VPS where it can run as root, so it can't go on serverless platforms.

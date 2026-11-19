@@ -13,7 +13,7 @@ const src = path.join(path.dirname(pkg), "min", "vs");
 const dst = path.resolve("public", "monaco", "vs");
 const stamp = path.resolve("public", "monaco", "VERSION");
 
-if (existsSync(stamp) && readFileSync(stamp, "utf8") === version) process.exit(0);
+if (existsSync(stamp) && readFileSync(stamp, "utf8") === version && existsSync(path.join(dst, "loader.js"))) process.exit(0);
 rmSync(path.dirname(dst), { recursive: true, force: true });
 cpSync(src, dst, { recursive: true });
 writeFileSync(stamp, version);

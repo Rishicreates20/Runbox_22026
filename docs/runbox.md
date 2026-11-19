@@ -127,9 +127,9 @@ The overhead is about 7–8 ms per run end to end. 16 jobs run concurrently fini
 
 ### Not verified here
 
-* **The cgroup v2 path.** This host has memory/pids/cpu bound to v1 hierarchies, and they can't be moved without tearing down the host's own cgroups. All limit tests ran through the v1 fallback. The v2 code reads and writes the standard files (`memory.max`, `pids.max`, `cpu.stat`, `memory.events`, `memory.peak`, `cgroup.kill`) and runs by default on Ubuntu 22.04/24.04, but it should be run once on a real v2 host: `sudo python3 tests/run_tests.py --cgroup v2`. `memory.peak` needs kernel 5.19+, and `memory_kb` reports -1 without it.
+* ~~The cgroup v2 path.~~ Now verified: CI runs `sudo python3 tests/run_tests.py --cgroup v2` on GitHub's Ubuntu 24.04 runners (cgroup v2) and the suite inside the Docker judge image on the same hosts; all 22 checks pass. `memory.peak` needs kernel 5.19+, and `memory_kb` reports -1 without it.
 * **Java and other JVM runtimes.** They need more syscalls (threads, `sched_*`, maybe `prctl`) and probably a bigger `--pids`. Only C and Python 3.12 were exercised.
-* **Ubuntu 24.04 specifically.** runbox runs as root, so AppArmor's `apparmor_restrict_unprivileged_userns` shouldn't apply, but this wasn't tried.
+* ~~Ubuntu 24.04 specifically.~~ Covered by the same CI runs.
 * **ptrace fallback, egress proxy, MAC profile.** The doc mentions these as optional and they aren't built.
 
 ## Operational notes
