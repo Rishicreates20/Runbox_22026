@@ -1,0 +1,244 @@
+.cp {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 36px clamp(16px, 3vw, 40px) 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cp-head h1 {
+  margin: 6px 0 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(28px, 3vw, 36px);
+  letter-spacing: -0.03em;
+}
+.cp-head p {
+  margin: 0;
+  max-width: 620px;
+  color: var(--muted);
+}
+.cp-head .eyebrow {
+  margin: 0;
+  color: var(--accent);
+}
+
+.cp-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+.cp-form {
+  flex: 999 1 560px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.cp-section {
+  margin: 0;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.cp-section legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+.cp-section legend + * {
+  clear: both;
+}
+.cp-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.cp-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.cp-opt {
+  margin-left: 6px;
+  font-weight: 400;
+  color: var(--dim);
+}
+.cp-pills {
+  align-self: flex-start;
+}
+.textarea {
+  height: auto;
+  min-height: 46px;
+  padding: 12px 14px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.textarea.mono {
+  font-size: 13px;
+}
+.field-help {
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.unit-input {
+  position: relative;
+}
+.unit-input .input {
+  padding-right: 48px;
+  font-family: var(--font-mono);
+}
+.unit-input span {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 500 12px/1 var(--font-mono);
+  color: var(--dim);
+  pointer-events: none;
+}
+.cp-sample {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--well);
+}
+.cp-sample-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+.cp-add {
+  align-self: flex-start;
+}
+.cp-tests {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--well);
+  max-height: 320px;
+}
+.cp-tests table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cp-tests th {
+  position: sticky;
+  top: 0;
+  padding: 10px 12px;
+  background: var(--well);
+  text-align: left;
+  font: 600 11px/1 var(--font-mono);
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.cp-tests td {
+  padding: 8px 12px;
+  border-top: 1px solid #171b22;
+  white-space: nowrap;
+}
+.cp-tests td:last-child {
+  width: 40px;
+  text-align: right;
+}
+.cp-count {
+  margin: 0;
+}
+.cp-submit {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 0 calc(14px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+.cp-progress {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.cp-preview {
+  flex: 1 1 380px;
+  min-width: 0;
+  position: sticky;
+  top: 84px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  overflow: hidden;
+}
+.cp-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--well);
+}
+.cp-preview-head .eyebrow {
+  color: var(--accent);
+}
+.cp-preview-body {
+  max-height: calc(100vh - 160px);
+}
+
+.cp-locked {
+  max-width: 520px;
+  margin: 12vh auto 0;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.cp-locked h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+.cp-locked p {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.cp-locked strong {
+  color: var(--text);
+}
+
+@media (max-width: 1020px) {
+  .cp-preview {
+    position: static;
+  }
+  .cp-preview-body {
+    max-height: 520px;
+  }
+}
+@media (max-width: 640px) {
+  .cp-grid-2,
+  .cp-grid-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Code+ \u2014 the web frontend for the runbox online judge",
+  "description": "Code+ — the web frontend for the runbox online judge",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -21,7 +21,9 @@
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
+    "@supabase/supabase-js": "^2.119.2",
     "@uiw/react-codemirror": "^4.25.12",
+    "fflate": "^0.8.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.6"

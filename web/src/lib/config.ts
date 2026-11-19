@@ -1,7 +1,13 @@
 /** Base URL of the Code+ API. Empty means demo mode: auth and judging run in the browser. */
 export const API_URL: string = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '');
 
-export const DEMO_MODE = API_URL === '';
+/** Supabase project for real accounts, problems, submissions and uploads. */
+export const SUPABASE_URL: string = (import.meta.env.VITE_SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
+export const SUPABASE_ANON_KEY: string = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+export const SUPABASE_MODE = SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== '';
+
+/** No backend at all: accounts and data stay in this browser. */
+export const DEMO_MODE = !SUPABASE_MODE && API_URL === '';
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
