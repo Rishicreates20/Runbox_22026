@@ -8,6 +8,8 @@
 # The judge runs privileged because runbox (the sandbox) creates namespaces,
 # OverlayFS mounts and cgroups. Only run it on a host you control.
 
+# POSTGRES_PASSWORD is spliced into a URL, so use a URL-safe value
+# (openssl rand -hex 24); characters like @ / : # would break DATABASE_URL.
 x-db-env: &db-env
   DATABASE_URL: postgres://codeplus:${POSTGRES_PASSWORD:-codeplus}@postgres:5432/codeplus
   REDIS_URL: redis://redis:6379

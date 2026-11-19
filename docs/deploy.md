@@ -26,7 +26,8 @@ Windows users: see [WSL 2](#windows-wsl-2).
 ```sh
 git clone https://github.com/Rishicreates20/Runbox_22026 /opt/codeplus && cd /opt/codeplus
 cp .env.example .env
-# edit .env: ADMIN_TOKEN=$(openssl rand -base64 24), POSTGRES_PASSWORD=...
+# edit .env: ADMIN_TOKEN=$(openssl rand -base64 24), POSTGRES_PASSWORD=$(openssl rand -hex 24)
+# (the DB password goes into a URL, so keep it to letters and digits)
 docker compose up -d --build
 docker compose ps            # migrate should be "exited (0)", the rest running/healthy
 ```

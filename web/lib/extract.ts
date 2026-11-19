@@ -62,9 +62,39 @@ function decodeXml(s: string): string {
     .replace(/&amp;/g, "&");
 }
 
+/** Total bytes every entry of a .docx/.pptx may inflate to. */
+const MAX_UNZIPPED_BYTES = 150 * 1024 * 1024;
+
+/**
+ * Guards against zip bombs: inflates every entry as a stream, counting real
+ * output bytes (the sizes in the zip header can lie), and stops as soon as
+ * the total passes MAX_UNZIPPED_BYTES. Run before mammoth or the PPTX reader
+ * decompress anything into memory.
+ */
+async function assertZipSize(zip: import("jszip")): Promise<void> {
+  let total = 0;
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir) continue;
+    await new Promise<void>((resolve, reject) => {
+      const stream = entry.nodeStream("nodebuffer");
+      stream.on("data", (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > MAX_UNZIPPED_BYTES) {
+          stream.pause();
+          stream.removeAllListeners("data");
+          reject(new ExtractError("That document expands to more than 150 MB when unzipped."));
+        }
+      });
+      stream.on("error", reject);
+      stream.on("end", () => resolve());
+    });
+  }
+}
+
 async function pptxText(buf: Buffer): Promise<string> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(buf);
+  await assertZipSize(zip);
   // Slide order comes from presentation.xml's sldIdLst, resolved via rels.
   const pres = (await zip.file("ppt/presentation.xml")?.async("string")) ?? "";
   const rels = (await zip.file("ppt/_rels/presentation.xml.rels")?.async("string")) ?? "";
@@ -209,6 +239,7 @@ export async function extractBytes(buf: Buffer, name = "", contentType = ""): Pr
       const { default: JSZip } = await import("jszip");
       const zip = await JSZip.loadAsync(buf);
       if (zip.file("word/document.xml")) {
+        await assertZipSize(zip);
         const mammoth = await import("mammoth");
         const { value } = await mammoth.convertToHtml(
           { buffer: buf },
@@ -244,13 +275,21 @@ for (const [a, p] of [
   ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
   ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 3],
 ] as const) blocked.addSubnet(a, p, "ipv4");
-for (const [a, p] of [["::", 128], ["::1", 128], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) {
+for (const [a, p] of [["::", 96], ["::1", 128], ["64:ff9b::", 96], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) {
   blocked.addSubnet(a, p, "ipv6");
 }
 
 function isPrivate(address: string, family: number): boolean {
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
-  if (mapped) return blocked.check(mapped[1], "ipv4");
+  // IPv4-mapped IPv6 comes in two spellings: ::ffff:127.0.0.1, and the hex
+  // form ::ffff:7f00:1 that the WHATWG URL parser normalises to. Check both
+  // against the IPv4 list.
+  const dotted = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (dotted) return blocked.check(dotted[1], "ipv4");
+  const hex = /^(?:0{0,4}:){0,5}:?ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(address);
+  if (hex) {
+    const hi = parseInt(hex[1], 16), lo = parseInt(hex[2], 16);
+    return blocked.check(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`, "ipv4");
+  }
   return blocked.check(address, family === 6 ? "ipv6" : "ipv4");
 }
 

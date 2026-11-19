@@ -27,15 +27,19 @@ mkdir -p "$out"/{bin,usr/bin,usr/lib,lib64,lib/x86_64-linux-gnu,etc,box,tmp,proc
 [[ -e $out/usr/lib/x86_64-linux-gnu ]] || ln -s ../../lib/x86_64-linux-gnu "$out/usr/lib/x86_64-linux-gnu"
 chmod 1777 "$out/tmp"
 
+# Shared-library paths a binary needs. Static binaries make ldd list nothing
+# and grep exit 1, so that (and only that) is tolerated here.
+deps_of() { ldd "$1" 2>/dev/null | grep -oE '/[^ ]+' || true; }
+
 copy_with_libs() {
-  local f=$1 dst=${2:-$1}
+  local f=$1 dst=${2:-$1} lib
   mkdir -p "$out$(dirname "$dst")"
   cp -L "$f" "$out$dst"
-  ldd "$f" 2>/dev/null | grep -oE '/[^ ]+' | while read -r lib; do
-    [[ -e $lib ]] || continue
+  for lib in $(deps_of "$f"); do
+    [[ -e $lib && ! -e $out$lib ]] || continue
     mkdir -p "$out$(dirname "$lib")"
-    cp -L --update=none "$lib" "$out$lib" 2>/dev/null || true
-  done || true  # static binaries: ldd lists nothing, grep exits 1 under pipefail
+    cp -L "$lib" "$out$lib"     # a failed copy now aborts the build (set -e)
+  done
 }
 
 copy_with_libs /bin/sh
@@ -49,9 +53,10 @@ for lib in libstdc++.so.6 libgcc_s.so.1 libm.so.6; do
 done
 
 libs_of() {
-  ldd "$1" 2>/dev/null | grep -oE '/[^ ]+' | while read -r lib; do
+  local lib
+  for lib in $(deps_of "$1"); do
     if [[ -e $lib && ! -e $out$lib ]]; then mkdir -p "$out$(dirname "$lib")"; cp -L "$lib" "$out$lib"; fi
-  done || true  # static binaries: ldd lists nothing, grep exits 1 under pipefail
+  done
 }
 
 if (( gcc )); then

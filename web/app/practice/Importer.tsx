@@ -56,7 +56,7 @@ export default function Importer() {
   }
 
   function pickFile(f: File | undefined) {
-    if (!f) return;
+    if (!f || busy !== null) return; // one import at a time
     if (f.size > MAX_PAPER_FILE_BYTES) return setError("The file is larger than 15 MB.");
     const fd = new FormData();
     fd.append("file", f);
@@ -174,11 +174,17 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Test cases the user added or fixed, per question number (overrides what
-  // was found in the text).
-  const [edited, setEdited] = useState<Record<number, PaperExample[]>>({});
+  // Test cases the user added or fixed (overriding what was found in the
+  // text), keyed by question title so they stay with their question when
+  // the text is edited and questions are added, removed or reordered.
+  const [edited, setEdited] = useState<Record<string, PaperExample[]>>({});
   const [open, setOpen] = useState<number | null>(null);
-  const testsOf = (i: number) => edited[i] ?? split.questions[i]?.examples ?? [];
+  const keyOf = (i: number) => split.questions[i]?.title ?? "";
+  const editedOf = (i: number): PaperExample[] | undefined => edited[keyOf(i)];
+  const testsOf = (i: number) => editedOf(i) ?? split.questions[i]?.examples ?? [];
+  // The split lags the textarea by a render while typing (useDeferredValue);
+  // don't save until it has caught up with the latest text.
+  const stale = deferred !== text;
   const tooMany = split.questions.length > 40;
 
   async function save() {
@@ -231,7 +237,7 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
         <button className="btn" onClick={onBack} disabled={saving}>
           Back
         </button>
-        <button className="btn primary" onClick={save} disabled={saving || split.questions.length === 0 || tooMany}>
+        <button className="btn primary" onClick={save} disabled={saving || stale || split.questions.length === 0 || tooMany}>
           {saving ? "Saving…" : `Practise ${split.questions.length} question${split.questions.length === 1 ? "" : "s"} →`}
         </button>
       </div>
@@ -266,7 +272,7 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
                   <div className="found-tests">
                     <span className={testsOf(i).length ? "found-ok" : "found-warn"}>
                       {testsOf(i).length
-                        ? `✓ ${testsOf(i).length} test case${testsOf(i).length > 1 ? "s" : ""}${edited[i] ? "" : " found"}: Submit checks ${testsOf(i).length > 1 ? "them" : "it"}`
+                        ? `✓ ${testsOf(i).length} test case${testsOf(i).length > 1 ? "s" : ""}${editedOf(i) ? "" : " found"}: Submit checks ${testsOf(i).length > 1 ? "them" : "it"}`
                         : "No test cases found: add one so your answer can be checked"}
                     </span>
                     <button className="btn small" onClick={() => setOpen(open === i ? null : i)}>
@@ -276,7 +282,7 @@ function Review({ doc, onBack, onSaved }: { doc: Extracted; onBack: () => void; 
                   {open === i && (
                     <TestsEditor
                       tests={testsOf(i).length ? testsOf(i) : [{ input: "", output: "" }]}
-                      onChange={(t) => setEdited({ ...edited, [i]: t })}
+                      onChange={(t) => setEdited({ ...edited, [keyOf(i)]: t })}
                     />
                   )}
                 </li>
