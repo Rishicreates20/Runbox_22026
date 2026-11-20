@@ -1,2 +1,4 @@
 runbox
 tests/build/
+node_modules/
+*.tsbuildinfo

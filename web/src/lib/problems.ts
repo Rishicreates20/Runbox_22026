@@ -3,6 +3,7 @@ import { PROBLEMS as BUILT_IN } from '../data/problems';
 import type { TestPair } from './files';
 import { readJSON, writeJSON } from './storage';
 import { supabase } from './supabase';
+import { statementParagraphs, summaryOf, type QuestionDraft } from './importPaper';
 import type { Difficulty, Problem, Sample } from './types';
 
 /**
@@ -50,6 +51,7 @@ interface ProblemRow {
   memory_mb: number;
   output_mb: number;
   hidden_tests: number;
+  paper?: string | null;
 }
 
 export function splitParagraphs(text: string): string[] {
@@ -71,13 +73,14 @@ function fromRow(r: ProblemRow): Problem {
     outputMb: r.output_mb,
     hiddenTests: r.hidden_tests,
     summary: r.summary,
-    statement: splitParagraphs(r.statement),
+    statement: r.paper ? statementParagraphs(r.statement) : splitParagraphs(r.statement),
     input: r.input_spec,
     output: r.output_spec,
     samples: Array.isArray(r.samples) ? r.samples : [],
     constraints: r.constraints ?? [],
     hint: r.hint ?? undefined,
     custom: true,
+    paper: r.paper ?? undefined,
   };
 }
 
@@ -239,4 +242,66 @@ export async function createProblem(input: NewProblem, tests: TestPair[], onProg
   const problem = fromRow(row);
   set({ problems: [...state.problems, problem] });
   return problem;
+}
+
+/* ---------------- Importing questions from a PDF ---------------- */
+
+const lines = (s: string) =>
+  s
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+
+/**
+ * Saves questions found in an uploaded paper as problems. They are private
+ * to the user who uploaded them, and the samples double as the judged tests.
+ */
+export async function importQuestions(drafts: QuestionDraft[], paper: string): Promise<Problem[]> {
+  const name = paper.trim().slice(0, 120) || 'Uploaded paper';
+  const rows = drafts.map((d) => {
+    const samples = d.samples.filter((s) => s.input.trim() || s.output.trim()).slice(0, 10);
+    const statement = d.statement.trim().slice(0, 20000) || d.title;
+    return {
+      title: d.title.trim().slice(0, 80).padEnd(3, '.'),
+      difficulty: d.difficulty,
+      tags: ['Imported'],
+      summary: summaryOf(statement),
+      statement,
+      input_spec: d.input.trim(),
+      output_spec: d.output.trim(),
+      constraints: lines(d.constraints),
+      hint: null,
+      samples,
+      time_limit_ms: 2000,
+      memory_mb: 256,
+      output_mb: 16,
+      hidden_tests: samples.length,
+      paper: name,
+    };
+  });
+
+  let created: Problem[];
+  if (!supabase) {
+    const existing = readJSON<Problem[]>(LOCAL_KEY, []);
+    let id = Math.max(1000, ...existing.map((p) => p.id));
+    created = rows.map((r) => fromRow({ ...r, id: ++id }));
+    writeJSON(LOCAL_KEY, [...existing, ...created]);
+  } else {
+    const { data, error } = await supabase
+      .from('problems')
+      .insert(rows.map((r) => ({ ...r, published: false })))
+      .select('*');
+    if (error || !data) {
+      const missing = /column .*paper|paper.* column|schema cache/i.test(error?.message ?? '');
+      throw new Error(
+        missing
+          ? 'The database needs the latest migration before papers can be imported (supabase/migrations).'
+          : `The questions could not be saved: ${error?.message ?? 'unknown error'}`,
+      );
+    }
+    created = (data as ProblemRow[]).map(fromRow);
+  }
+  set({ problems: [...state.problems, ...created] });
+  return created;
 }

@@ -21,6 +21,7 @@ Stack: Vite, React 19, TypeScript, React Router 7 and CodeMirror 6. Fonts are se
 | `/problems` | Dashboard with solved-by-difficulty ring, a 20-week activity heatmap, streak, daily challenge and weekly-round countdowns. The problem table filters by difficulty, topic, status and search, sorts by acceptance, and keeps its filters in the URL. |
 | `/problems/:id` | Workspace with the statement, a CodeMirror editor (C++17, C11, Python 3.12) and drafts autosaved per problem and language. Panels resize. Run checks the editable sample cases. Submit judges the hidden tests one by one and shows the runbox verdict, CPU time, memory and raw JSON. `Ctrl/⌘ + Enter` runs and `Ctrl/⌘ + Shift + Enter` submits. |
 | `/submit` | Upload a `.cpp`, `.c` or `.py` file (up to 64 KB), pick the problem, and watch it judged test by test. The language comes from the file extension. |
+| `/upload` | Upload a PDF of coding questions. It's read in the browser with pdf.js (no server), split into questions, and each question's task, input/output format, constraints and sample tests are pulled out. Review and fix them, then add them to your problem list. They're private to you and tagged *Imported*; their samples are the judged tests. Scanned PDFs have no text, so you can paste the questions instead. |
 | `/submissions` | Every submission, filterable by verdict. Uploaded files are marked. |
 | `/admin/problems/new` | Admins only. Write a statement with a live preview, add examples, and upload hidden tests as `1.in`/`1.out` pairs, `input1.txt`/`output1.txt`, or one `.zip`. |
 | `/reset-password` | Where the password-reset email lands. |
@@ -36,7 +37,7 @@ The app picks one of three backends from its environment variables.
 Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the project's publishable key) in `.env.local`, or in the Vercel project's environment variables. Supabase then provides:
 
 - **Accounts:** email and password with email confirmation, password reset, and GitHub or Google once those providers are switched on. Sessions honour "Keep me signed in".
-- **Data:** `profiles` (username and role), `problems` and `problem_tests` for admin-created problems, and `submissions`.
+- **Data:** `profiles` (username and role), `problems` and `problem_tests` for admin-created problems, and `submissions`. Questions imported from a PDF are unpublished `problems` rows owned by the user who uploaded them, with `paper` set to the paper's name.
 - **Files:** private buckets `solutions` (each user's uploaded files, in a folder named after their user id) and `testcases` (admins only).
 
 Row-level security limits each user to their own submissions and files. Only admins can create problems or read hidden tests. The schema is in [`supabase/migrations`](../supabase/migrations).

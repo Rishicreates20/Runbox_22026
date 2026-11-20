@@ -46,8 +46,10 @@ export interface Problem {
   samples: Sample[];
   constraints: string[];
   hint?: string;
-  /** Created by an admin through the Create problem page. */
+  /** Created by an admin through the Create problem page, or imported from a PDF. */
   custom?: boolean;
+  /** Name of the question paper this was imported from. Imported problems are private to their owner. */
+  paper?: string;
 }
 
 export interface TestResult {
