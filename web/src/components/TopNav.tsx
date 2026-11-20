@@ -118,6 +118,9 @@ export function TopNav({ children }: { children?: ReactNode }) {
           <NavLink to="/submissions" className="topnav-link">
             Submissions
           </NavLink>
+          <NavLink to="/upload" className="topnav-link">
+            Upload PDF
+          </NavLink>
           {canCreateProblems && (
             <NavLink to="/admin/problems/new" className="topnav-link">
               Create

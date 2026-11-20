@@ -11,6 +11,7 @@ import { ProblemsPage } from './pages/Problems';
 import { ResetPasswordPage } from './pages/ResetPassword';
 import { SubmissionsPage } from './pages/Submissions';
 import { SubmitPage } from './pages/Submit';
+import { UploadPaperPage } from './pages/UploadPaper';
 
 // The editor (CodeMirror) is most of the bundle, so it loads only when a problem opens.
 const WorkspacePage = lazy(() => import('./pages/Workspace').then((m) => ({ default: m.WorkspacePage })));
@@ -74,6 +75,14 @@ export function App() {
         element={
           <RequireAuth>
             <SubmitPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/upload"
+        element={
+          <RequireAuth>
+            <UploadPaperPage />
           </RequireAuth>
         }
       />
