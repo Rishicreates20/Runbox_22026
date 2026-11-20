@@ -33,7 +33,8 @@ export interface Problem {
   title: string;
   difficulty: Difficulty;
   tags: string[];
-  acceptance: number;
+  /** Null for problems created on this site, which have no history yet. */
+  acceptance: number | null;
   timeLimitMs: number;
   memoryMb: number;
   outputMb: number;
@@ -45,6 +46,8 @@ export interface Problem {
   samples: Sample[];
   constraints: string[];
   hint?: string;
+  /** Created by an admin through the Create problem page. */
+  custom?: boolean;
 }
 
 export interface TestResult {
@@ -96,12 +99,15 @@ export interface Submission {
   failedTest?: number;
   createdAt: number;
   source: string;
+  /** Storage path of the uploaded file, when the solution came from a file upload. */
+  filePath?: string;
 }
 
 export interface User {
   id: string;
   username: string;
   email: string;
-  provider: 'password' | 'github' | 'google' | 'demo';
+  provider: 'password' | 'email' | 'github' | 'google' | 'demo';
+  role: 'user' | 'admin';
   createdAt: number;
 }

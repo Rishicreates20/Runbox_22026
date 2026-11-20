@@ -4,7 +4,8 @@ import { useAuth } from '../auth/AuthContext';
 import { DifficultyPill, StatusIcon } from '../components/Badges';
 import { Icon } from '../components/Icon';
 import { TopNav } from '../components/TopNav';
-import { PROBLEMS, TOPICS, dailyProblem } from '../data/problems';
+import { TOPICS, dailyProblem } from '../data/problems';
+import { useCatalog } from '../lib/problems';
 import {
   acceptanceRate,
   activity,
@@ -17,8 +18,8 @@ import {
   streak,
   type ProblemStatus,
 } from '../lib/stats';
-import { useSubmissions } from '../lib/storage';
-import type { Difficulty, Submission } from '../lib/types';
+import { useSubmissions } from '../lib/submissions';
+import type { Difficulty, Problem, Submission } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import './Problems.css';
 
@@ -68,8 +69,9 @@ function greeting(now: number) {
 }
 
 export function ProblemsPage() {
-  const { user } = useAuth();
+  const { user, canCreateProblems } = useAuth();
   const subs = useSubmissions(user?.id);
+  const { problems: PROBLEMS, error: catalogError } = useCatalog();
   const now = useNow(1000);
   const [params, setParams] = useSearchParams();
 
@@ -113,10 +115,11 @@ export function ProblemsPage() {
         (status === 'all' || (statuses.get(p.id) ?? 'todo') === status) &&
         (!needle || p.title.toLowerCase().includes(needle) || String(p.id).startsWith(needle) || p.tags.some((t) => t.includes(needle))),
     );
-    if (sort === 'acc-asc') list = [...list].sort((a, b) => a.acceptance - b.acceptance);
-    if (sort === 'acc-desc') list = [...list].sort((a, b) => b.acceptance - a.acceptance);
+    const acc = (p: Problem) => p.acceptance ?? -1;
+    if (sort === 'acc-asc') list = [...list].sort((a, b) => acc(a) - acc(b));
+    if (sort === 'acc-desc') list = [...list].sort((a, b) => acc(b) - acc(a));
     return list;
-  }, [diff, topic, status, query, sort, statuses]);
+  }, [diff, topic, status, query, sort, statuses, PROBLEMS]);
 
   const filtersKey = `${diff}|${topic}|${status}|${query}|${sort}`;
   const filtered = diff !== 'All' || topic !== 'all' || status !== 'all' || query !== '';
@@ -150,8 +153,14 @@ export function ProblemsPage() {
           )}
         </section>
 
+        {catalogError && (
+          <p className="form-msg form-msg-error" role="alert">
+            {catalogError}
+          </p>
+        )}
+
         <section className="stat-grid">
-          <SolvedCard subs={subs} />
+          <SolvedCard subs={subs} problems={PROBLEMS} />
           <ActivityCard subs={subs} now={now} />
           <DailyCard now={now} solved={statuses.get(dailyProblem(now).id) === 'solved'} />
         </section>
@@ -160,8 +169,15 @@ export function ProblemsPage() {
           <section className="problems-main anim-up" style={{ animationDelay: '0.2s' }} aria-labelledby="problems-h">
             <div className="section-head">
               <h2 id="problems-h">Problems</h2>
-              <span className="muted-sm">
-                Showing <strong>{rows.length}</strong> of {PROBLEMS.length}
+              <span className="section-tools">
+                <span className="muted-sm">
+                  Showing <strong>{rows.length}</strong> of {PROBLEMS.length}
+                </span>
+                {canCreateProblems && (
+                  <Link to="/admin/problems/new" className="btn btn-ghost btn-sm">
+                    <Icon name="plus" size={14} /> Create problem
+                  </Link>
+                )}
               </span>
             </div>
 
@@ -256,10 +272,16 @@ export function ProblemsPage() {
                       </td>
                       <td className="c-acc">
                         <span className="acc">
-                          <span className="acc-num">{p.acceptance.toFixed(1)}%</span>
-                          <span className="acc-bar">
-                            <span style={{ width: `${p.acceptance}%` }} />
-                          </span>
+                          {p.acceptance === null ? (
+                            <span className="acc-new">New</span>
+                          ) : (
+                            <>
+                              <span className="acc-num">{p.acceptance.toFixed(1)}%</span>
+                              <span className="acc-bar">
+                                <span style={{ width: `${p.acceptance}%` }} />
+                              </span>
+                            </>
+                          )}
                         </span>
                       </td>
                       <td className="c-level">
@@ -288,7 +310,7 @@ export function ProblemsPage() {
 
           <aside className="problems-side anim-up" style={{ animationDelay: '0.28s' }}>
             <ContestCard now={now} />
-            <TopicProgress subs={subs} />
+            <TopicProgress subs={subs} problems={PROBLEMS} />
             <YourStats subs={subs} />
           </aside>
         </div>
@@ -297,8 +319,8 @@ export function ProblemsPage() {
   );
 }
 
-function SolvedCard({ subs }: { subs: Submission[] }) {
-  const { byDifficulty, solved, total } = solvedByDifficulty(subs);
+function SolvedCard({ subs, problems }: { subs: Submission[]; problems: Problem[] }) {
+  const { byDifficulty, solved, total } = solvedByDifficulty(subs, problems);
   const C = 2 * Math.PI * 48;
   let offset = 0;
   const segments = (['Easy', 'Medium', 'Hard'] as Difficulty[]).map((d, i) => {
@@ -469,11 +491,11 @@ function ContestCard({ now }: { now: number }) {
   );
 }
 
-function TopicProgress({ subs }: { subs: Submission[] }) {
+function TopicProgress({ subs, problems }: { subs: Submission[]; problems: Problem[] }) {
   const statuses = statusMap(subs);
   const colors = ['var(--accent)', 'var(--info)', 'var(--mem)', 'var(--warn)'];
   const topics = TOPICS.map((t) => {
-    const inTopic = PROBLEMS.filter((p) => p.tags.includes(t.key));
+    const inTopic = problems.filter((p) => p.tags.includes(t.key));
     const done = inTopic.filter((p) => statuses.get(p.id) === 'solved').length;
     return { ...t, done, total: inTopic.length };
   })

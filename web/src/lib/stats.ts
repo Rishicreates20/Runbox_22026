@@ -1,5 +1,4 @@
-import { PROBLEMS } from '../data/problems';
-import type { Difficulty, Submission } from './types';
+import type { Difficulty, Problem, Submission } from './types';
 
 export type ProblemStatus = 'solved' | 'attempted' | 'todo';
 
@@ -14,19 +13,19 @@ export function statusMap(subs: Submission[]): Map<number, ProblemStatus> {
   return map;
 }
 
-export function solvedByDifficulty(subs: Submission[]) {
+export function solvedByDifficulty(subs: Submission[], problems: Problem[]) {
   const status = statusMap(subs);
   const out: Record<Difficulty, { solved: number; total: number }> = {
     Easy: { solved: 0, total: 0 },
     Medium: { solved: 0, total: 0 },
     Hard: { solved: 0, total: 0 },
   };
-  for (const p of PROBLEMS) {
+  for (const p of problems) {
     out[p.difficulty].total++;
     if (status.get(p.id) === 'solved') out[p.difficulty].solved++;
   }
   const solved = out.Easy.solved + out.Medium.solved + out.Hard.solved;
-  return { byDifficulty: out, solved, total: PROBLEMS.length };
+  return { byDifficulty: out, solved, total: problems.length };
 }
 
 function dayIndex(ts: number): number {

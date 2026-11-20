@@ -10,22 +10,28 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent as RDragEvent,
   type KeyboardEvent as RKeyboardEvent,
   type PointerEvent as RPointerEvent,
 } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { DifficultyPill, RichText, VerdictBadge } from '../components/Badges';
+import { VerdictBadge } from '../components/Badges';
 import { codeplusTheme } from '../components/editorTheme';
 import { Icon } from '../components/Icon';
+import { JudgeProgress, VerdictHeader } from '../components/JudgeResult';
 import { LogoMark } from '../components/Logo';
+import { PlusLoader } from '../components/PlusLoader';
+import { ProblemStatement } from '../components/ProblemStatement';
 import { UserMenu } from '../components/TopNav';
 import { LANGUAGES, LANGUAGE_ORDER } from '../data/languages';
-import { getProblem, neighbours } from '../data/problems';
+import { SOURCE_ACCEPT, formatBytes, readSourceFile } from '../lib/files';
 import { judge, type DemoOutcome } from '../lib/judge';
+import { neighboursIn, useProblem, useProblems } from '../lib/problems';
 import { formatCpu, formatMemory, pad2, relativeTime, statusMap } from '../lib/stats';
-import { addSubmission, loadDraft, loadLanguage, newId, readJSON, saveDraft, saveLanguage, useSubmissions, writeJSON } from '../lib/storage';
-import type { JudgeReport, Language, Problem, RunReport, Sample, TestResult, Verdict } from '../lib/types';
+import { loadDraft, loadLanguage, newId, readJSON, saveDraft, saveLanguage, writeJSON } from '../lib/storage';
+import { recordSubmission, useSubmissions } from '../lib/submissions';
+import type { JudgeReport, Language, Problem, RunReport, Sample, TestResult } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { VERDICTS } from '../lib/verdicts';
 import { NotFound } from './NotFound';
@@ -52,18 +58,19 @@ const MOD = isMac ? '⌘' : 'Ctrl';
 
 export function WorkspacePage() {
   const { id } = useParams();
-  const problem = getProblem(Number(id));
-  if (!problem) return <NotFound />;
+  const { problem, ready } = useProblem(Number(id));
+  if (!problem) return ready ? <NotFound /> : <PlusLoader label="Loading problem" />;
   return <Workspace key={problem.id} problem={problem} />;
 }
 
 function Workspace({ problem }: { problem: Problem }) {
-  const { user, demoMode } = useAuth();
+  const { user } = useAuth();
+  const simulatedJudge = judge.mode === 'demo';
   const userId = user!.id;
   const allSubs = useSubmissions(userId);
   const subs = useMemo(() => allSubs.filter((s) => s.problemId === problem.id), [allSubs, problem.id]);
   const solved = statusMap(subs).get(problem.id) === 'solved';
-  const { prev, next } = neighbours(problem.id);
+  const { prev, next } = neighboursIn(useProblems(), problem.id);
 
   /* ---------- Editor state ---------- */
   const [lang, setLang] = useState<Language>(() => loadLanguage());
@@ -97,9 +104,39 @@ function Workspace({ problem }: { problem: Problem }) {
     [userId, problem.id, lang, code],
   );
 
+  /* ---------- Uploading a source file ---------- */
+  const fileInput = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const [dragging, setDragging] = useState(false);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), notice.kind === 'error' ? 6000 : 3500);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const loadFile = useCallback(
+    async (file?: File) => {
+      if (!file) return;
+      try {
+        const src = await readSourceFile(file);
+        const to = src.language ?? lang;
+        if (to !== lang) switchLanguage(to, src.text);
+        else setCode(src.text);
+        setNotice({
+          kind: 'ok',
+          text: `Loaded ${src.name} (${formatBytes(src.size)})${src.language ? ` as ${LANGUAGES[to].short}` : `. Kept ${LANGUAGES[lang].short}: the extension was not recognised`}.`,
+        });
+      } catch (e) {
+        setNotice({ kind: 'error', text: e instanceof Error ? e.message : 'That file could not be read.' });
+      }
+    },
+    [lang, switchLanguage],
+  );
+  const hasFiles = (e: RDragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+
   /* ---------- Panels ---------- */
   const [leftTab, setLeftTab] = useState<'desc' | 'subs'>('desc');
-  const [hintOpen, setHintOpen] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'cases' | 'result'>('cases');
   const [cases, setCases] = useState<EditableCase[]>(() => problem.samples.map((s) => ({ ...s })));
   const [caseIdx, setCaseIdx] = useState(0);
@@ -155,7 +192,7 @@ function Workspace({ problem }: { problem: Problem }) {
       setReport(r);
       setTests(r.tests);
       setPhase('done');
-      addSubmission(userId, {
+      recordSubmission(userId, {
         id: newId(),
         problemId: problem.id,
         language: lang,
@@ -165,7 +202,7 @@ function Workspace({ problem }: { problem: Problem }) {
         failedTest: r.failedTest,
         createdAt: Date.now(),
         source: code,
-      });
+      }).catch((err: unknown) => setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'This submission could not be saved.' }));
     } catch (e) {
       if (ac.signal.aborted) return;
       setError(e instanceof Error ? e.message : 'The judge could not be reached.');
@@ -337,103 +374,7 @@ function Workspace({ problem }: { problem: Problem }) {
 
           <div className="panel-body scroll">
             {leftTab === 'desc' ? (
-              <article className="statement anim-in">
-                <div className="st-head">
-                  <h1>
-                    {problem.id}. {problem.title}
-                  </h1>
-                  {solved && (
-                    <span className="solved-badge">
-                      <Icon name="check" size={12} strokeWidth={3} /> Solved
-                    </span>
-                  )}
-                </div>
-                <div className="tag-row">
-                  <DifficultyPill level={problem.difficulty} />
-                  {problem.tags.map((t) => (
-                    <span key={t} className="tag">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-                <dl className="limits">
-                  <div>
-                    <dt>Time</dt>
-                    <dd>{problem.timeLimitMs} ms</dd>
-                  </div>
-                  <div>
-                    <dt>Memory</dt>
-                    <dd>{problem.memoryMb} MB</dd>
-                  </div>
-                  <div>
-                    <dt>Output</dt>
-                    <dd>{problem.outputMb} MB</dd>
-                  </div>
-                </dl>
-
-                {problem.statement.map((p, i) => (
-                  <p key={i}>
-                    <RichText text={p} />
-                  </p>
-                ))}
-
-                <h2>Input</h2>
-                <p>
-                  <RichText text={problem.input} />
-                </p>
-                <h2>Output</h2>
-                <p>
-                  <RichText text={problem.output} />
-                </p>
-
-                {problem.samples.map((s, i) => (
-                  <div key={i} className="example">
-                    <h2>Example {i + 1}</h2>
-                    <div className="io-grid">
-                      <div>
-                        <span className="io-label">Input</span>
-                        <pre>{s.input}</pre>
-                      </div>
-                      <div>
-                        <span className="io-label">Output</span>
-                        <pre>{s.output}</pre>
-                      </div>
-                    </div>
-                    {s.explanation && (
-                      <p className="explain">
-                        <strong>Why:</strong> <RichText text={s.explanation} />
-                      </p>
-                    )}
-                  </div>
-                ))}
-
-                <h2>Constraints</h2>
-                <ul className="constraints">
-                  {problem.constraints.map((c) => (
-                    <li key={c}>{c}</li>
-                  ))}
-                </ul>
-
-                <div className="note">
-                  <Icon name="shield" size={18} />
-                  <span>
-                    Your program reads stdin and writes stdout inside the runbox sandbox. Windows line endings in the input become plain
-                    newlines, and network access is blocked.
-                  </span>
-                </div>
-
-                {problem.hint && (
-                  <div className="hint">
-                    <button type="button" aria-expanded={hintOpen} onClick={() => setHintOpen((o) => !o)}>
-                      <span>
-                        <Icon name="bulb" size={16} style={{ color: 'var(--warn)' }} /> Hint
-                      </span>
-                      <Icon name="chevronDown" className="hint-chev" />
-                    </button>
-                    {hintOpen && <p className="anim-up">{problem.hint}</p>}
-                  </div>
-                )}
-              </article>
+              <ProblemStatement problem={problem} solved={solved} />
             ) : (
               <div className="subs anim-in">
                 {subs.length === 0 ? (
@@ -523,6 +464,25 @@ function Workspace({ problem }: { problem: Problem }) {
                     ))}
                   </select>
                 </label>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept={SOURCE_ACCEPT}
+                  hidden
+                  onChange={(e) => {
+                    loadFile(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Upload a source file"
+                  title="Upload a source file (.cpp, .c or .py), or drop one on the editor"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Icon name="upload" size={15} />
+                </button>
                 <button
                   type="button"
                   className="icon-btn"
@@ -560,7 +520,45 @@ function Workspace({ problem }: { problem: Problem }) {
                 )}
               </div>
             </div>
-            <div className="editor-host">
+            <div
+              className="editor-host"
+              data-dragging={dragging}
+              onDragEnter={(e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                dragDepth.current += 1;
+                setDragging(true);
+              }}
+              onDragOver={(e) => {
+                if (hasFiles(e)) e.preventDefault();
+              }}
+              onDragLeave={() => {
+                dragDepth.current = Math.max(0, dragDepth.current - 1);
+                if (dragDepth.current === 0) setDragging(false);
+              }}
+              onDropCapture={(e) => {
+                if (!hasFiles(e)) return;
+                // Handle file drops here so the editor does not paste the file in as text.
+                e.preventDefault();
+                e.stopPropagation();
+                dragDepth.current = 0;
+                setDragging(false);
+                loadFile(e.dataTransfer.files[0]);
+              }}
+            >
+              {dragging && (
+                <div className="drop-overlay" aria-hidden="true">
+                  <Icon name="upload" size={26} />
+                  <strong>Drop to load this file</strong>
+                  <span>.cpp, .c or .py · up to 64 KB</span>
+                </div>
+              )}
+              {notice && (
+                <div className={`editor-toast editor-toast-${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
+                  <Icon name={notice.kind === 'ok' ? 'check' : 'info'} size={14} />
+                  {notice.text}
+                </div>
+              )}
               <CodeMirror
                 value={code}
                 onChange={setCode}
@@ -627,7 +625,7 @@ function Workspace({ problem }: { problem: Problem }) {
                     {VERDICTS[report.verdict].label}
                   </span>
                 )}
-                {demoMode && (
+                {simulatedJudge && (
                   <label className="outcome" title="No judge server is connected. Pick which verdict the simulator returns.">
                     <span>Demo judge</span>
                     <select className="select" value={outcome} onChange={(e) => setOutcome(e.target.value as DemoOutcome)} disabled={busy}>
@@ -718,7 +716,7 @@ function Workspace({ problem }: { problem: Problem }) {
                   setResultCase={setResultCase}
                   compileCmd={info.compile}
                   total={problem.hiddenTests}
-                  demoMode={demoMode}
+                  demoMode={simulatedJudge}
                   onRetry={run}
                 />
               )}
@@ -852,95 +850,8 @@ function ResultView(props: {
   }
 
   if (phase === 'judging' || phase === 'done') {
-    const shown: TestResult[] = tests.length ? tests : Array.from({ length: total }, (_, i) => ({ index: i + 1, state: 'pending' }));
-    const finished = shown.filter((t) => t.state === 'passed' || t.state === 'failed').length;
-    const runningIdx = shown.findIndex((t) => t.state === 'running');
-    return (
-      <div className="result">
-        {phase === 'judging' && (
-          <div className="judging-head anim-in">
-            <span>
-              <span className="spinner spinner-lg" />
-              <strong>{runningIdx === -1 && finished === 0 ? 'Compiling' : 'Judging'}</strong>
-            </span>
-            <span className="mono muted-sm" aria-live="polite">
-              {runningIdx === -1 ? 'preparing sandbox' : `test ${runningIdx + 1} of ${shown.length}`}
-            </span>
-          </div>
-        )}
-        {phase === 'done' && report && <VerdictHeader verdict={report.verdict} detail={report.detail} />}
-
-        <ol className="cells" aria-label="Hidden test results">
-          {shown.map((t) => (
-            <li key={t.index} className={`cell cell-${t.state}`} title={`Test ${t.index}: ${t.state}${t.verdict && t.state === 'failed' ? ` (${VERDICTS[t.verdict].label})` : ''}`} style={t.state === 'failed' && t.verdict ? ({ '--fail': VERDICTS[t.verdict].color } as CSSProperties) : undefined}>
-              {pad2(t.index)}
-            </li>
-          ))}
-        </ol>
-
-        {phase === 'judging' && (
-          <div className="progress">
-            <span style={{ width: `${(finished / shown.length) * 100}%` }} />
-          </div>
-        )}
-
-        {phase === 'done' && report && (
-          <div className="anim-up report" style={{ animationDelay: '0.1s' }}>
-            {report.verdict === 'CE' ? (
-              <pre className="compile-out">{report.compileOutput}</pre>
-            ) : (
-              <>
-                <dl className="metrics">
-                  <div>
-                    <dt>Tests</dt>
-                    <dd>
-                      {report.passed} / {report.total}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>CPU time</dt>
-                    <dd>{formatCpu(report.cpuMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Wall time</dt>
-                    <dd>{formatCpu(report.wallMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Memory</dt>
-                    <dd>{formatMemory(report.memoryKb)}</dd>
-                  </div>
-                </dl>
-                {report.raw && (
-                  <pre className="raw">
-                    <span className="dim">runbox → </span>
-                    {JSON.stringify(report.raw)}
-                  </pre>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    );
+    return <JudgeProgress phase={phase} tests={tests} total={total} report={report} />;
   }
 
   return null;
-}
-
-function VerdictHeader({ verdict, detail }: { verdict: Verdict; detail: string }) {
-  const v = VERDICTS[verdict];
-  const ok = verdict === 'AC';
-  return (
-    <div className="verdict-head anim-up">
-      <span className={`verdict-icon ${ok ? 'verdict-icon-ok' : ''}`} style={{ color: v.color, background: v.bg }}>
-        <Icon name={ok ? 'check' : 'x'} size={22} strokeWidth={2.6} />
-      </span>
-      <span className="verdict-text">
-        <strong style={{ color: v.color }} aria-live="polite">
-          {v.label}
-        </strong>
-        <span>{detail}</span>
-      </span>
-    </div>
-  );
 }

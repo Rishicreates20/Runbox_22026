@@ -5,9 +5,9 @@ import { VerdictBadge } from '../components/Badges';
 import { Icon } from '../components/Icon';
 import { TopNav } from '../components/TopNav';
 import { LANGUAGES } from '../data/languages';
-import { getProblem } from '../data/problems';
+import { findProblem, useProblems } from '../lib/problems';
 import { formatCpu, formatMemory, relativeTime } from '../lib/stats';
-import { useSubmissions } from '../lib/storage';
+import { useSubmissions } from '../lib/submissions';
 import type { Verdict } from '../lib/types';
 import { useNow } from '../lib/useNow';
 import { VERDICTS } from '../lib/verdicts';
@@ -16,6 +16,7 @@ import './Submissions.css';
 export function SubmissionsPage() {
   const { user } = useAuth();
   const subs = useSubmissions(user?.id);
+  const problems = useProblems();
   const now = useNow(30_000);
   const [filter, setFilter] = useState<'all' | Verdict>('all');
 
@@ -75,7 +76,7 @@ export function SubmissionsPage() {
               </thead>
               <tbody key={filter}>
                 {list.map((s, i) => {
-                  const p = getProblem(s.problemId);
+                  const p = findProblem(problems, s.problemId);
                   return (
                     <tr key={s.id} className="prow" style={{ animationDelay: `${Math.min(i, 20) * 0.025}s` }}>
                       <td className="muted-sm" title={new Date(s.createdAt).toLocaleString()}>
@@ -91,6 +92,11 @@ export function SubmissionsPage() {
                         <span className="subs-verdict">
                           <VerdictBadge verdict={s.verdict} />
                           {s.failedTest && <span className="muted-xs">test {s.failedTest}</span>}
+                          {s.filePath && (
+                            <span className="file-chip" title="Submitted as an uploaded file">
+                              <Icon name="upload" size={12} /> file
+                            </span>
+                          )}
                         </span>
                       </td>
                       <td className="mono subs-cell">{LANGUAGES[s.language].short}</td>

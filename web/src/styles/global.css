@@ -581,3 +581,108 @@ pre,
   max-width: 380px;
   color: var(--muted);
 }
+
+/* ---------- Messages ---------- */
+.form-msg {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #1f2a3a;
+  border-radius: 10px;
+  background: #0e141d;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #a9b6c8;
+  animation: fade-up 0.3s var(--ease) both;
+}
+.form-msg svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--info);
+}
+.form-msg-error {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+}
+
+.tag-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font: 500 11px/1.4 var(--font-mono);
+}
+
+/* ---------- Drop zones ---------- */
+.dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--line-3);
+  border-radius: 16px;
+  background:
+    radial-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--well);
+  text-align: center;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    transform 0.2s var(--ease);
+}
+.dropzone:hover {
+  border-color: #4a5466;
+}
+.dropzone.is-over {
+  border-color: var(--accent);
+  background-color: #11160b;
+  transform: scale(1.01);
+}
+.dropzone.is-disabled {
+  opacity: 0.5;
+}
+.dropzone-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  transition: transform 0.3s var(--ease);
+}
+.dropzone.is-over .dropzone-icon {
+  transform: translateY(-4px);
+  animation: drop-bob 0.9s ease-in-out infinite;
+}
+@keyframes drop-bob {
+  50% {
+    transform: translateY(-9px);
+  }
+}
+.dropzone-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.dropzone-hint {
+  font-size: 13px;
+  color: var(--dim);
+}

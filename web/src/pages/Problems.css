@@ -200,12 +200,7 @@
   line-height: 1.5;
   color: var(--muted);
 }
-.tag-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
+
 
 /* ---------- Layout ---------- */
 .problems-layout {
@@ -533,4 +528,20 @@
 .mini-stats dd {
   margin: 6px 0 0;
   font: 600 18px/1 var(--font-mono);
+}
+
+.section-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.acc-new {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(124, 199, 255, 0.12);
+  color: var(--info);
+  font: 600 11px/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }

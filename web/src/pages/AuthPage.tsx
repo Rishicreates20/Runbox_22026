@@ -31,7 +31,8 @@ const STRENGTH_LABEL = ['Use 8+ characters with letters, numbers and a symbol', 
 const STRENGTH_COLOR = ['var(--dim)', 'var(--err)', 'var(--warn)', '#a3e635', 'var(--ok)'];
 
 export function AuthPage({ mode }: { mode: Mode }) {
-  const { signIn, signUp, signInWithProvider, signInDemo, demoMode } = useAuth();
+  const { signIn, signUp, signInWithProvider, signInDemo, demoMode, backend, usernameAvailable, resendConfirmation, requestPasswordReset } =
+    useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from;
@@ -47,6 +48,9 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const [resend, setResend] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   const refs = {
     username: useRef<HTMLInputElement>(null),
@@ -58,6 +62,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setErrors({});
     setFormError(null);
     setInfo(null);
+    setSentTo(null);
+    setUnconfirmed(false);
     document.title = isSignup ? 'Create account · Code+' : 'Sign in · Code+';
   }, [isSignup]);
 
@@ -78,6 +84,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setErrors(next);
     setFormError(null);
     setInfo(null);
+    setUnconfirmed(false);
     const first = (['username', 'email', 'password'] as Field[]).find((f) => next[f]);
     if (first) {
       refs[first].current?.focus();
@@ -85,11 +92,23 @@ export function AuthPage({ mode }: { mode: Mode }) {
     }
     setBusy('form');
     try {
-      if (isSignup) await signUp(username, email, password);
-      else await signIn(email, password, remember);
+      if (isSignup) {
+        const result = await signUp(username, email, password);
+        if (result.needsConfirmation) {
+          setSentTo(email.trim());
+          setResend('idle');
+          setBusy(null);
+          return;
+        }
+      } else {
+        await signIn(email, password, remember);
+      }
       done();
     } catch (err) {
-      if (err instanceof AuthError && err.field) {
+      if (err instanceof AuthError && err.code === 'unconfirmed') {
+        setUnconfirmed(true);
+        setFormError(err.message);
+      } else if (err instanceof AuthError && err.field) {
         setErrors({ [err.field]: err.message });
         refs[err.field].current?.focus();
       } else {
@@ -110,6 +129,49 @@ export function AuthPage({ mode }: { mode: Mode }) {
       setFormError(err instanceof Error ? err.message : 'Sign-in failed.');
       setBusy(null);
     }
+  }
+
+  async function resendEmail(address: string) {
+    setResend('sending');
+    try {
+      await resendConfirmation(address);
+      setResend('sent');
+      setInfo(`A new confirmation link is on its way to ${address}.`);
+      setFormError(null);
+    } catch (err) {
+      setResend('idle');
+      setFormError(err instanceof Error ? err.message : 'The email could not be sent.');
+    }
+  }
+
+  async function forgotPassword() {
+    setFormError(null);
+    if (backend !== 'supabase') {
+      setInfo(
+        demoMode
+          ? 'Password reset needs the Code+ server. In demo mode, create a new account or use the demo account.'
+          : 'If an account uses that email, a reset link is on its way.',
+      );
+      return;
+    }
+    const em = validateEmail(email);
+    if (em) {
+      setErrors({ email: 'Enter your email above first, then choose Forgot password.' });
+      refs.email.current?.focus();
+      return;
+    }
+    try {
+      await requestPasswordReset(email);
+      setInfo(`If an account uses ${email.trim()}, a link to choose a new password is on its way.`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'The reset email could not be sent.');
+    }
+  }
+
+  async function checkUsername() {
+    if (backend !== 'supabase' || validateUsername(username)) return;
+    const free = await usernameAvailable(username);
+    if (free === false) setErrors((e) => ({ ...e, username: 'That username is taken.' }));
   }
 
   async function demo() {
@@ -172,10 +234,40 @@ export function AuthPage({ mode }: { mode: Mode }) {
 
       <main className="auth-main">
         <div className="auth-card anim-up" style={{ animationDelay: '0.1s' }}>
-          <div className="auth-title" key={mode}>
-            <h2 className="anim-in">{isSignup ? 'Create your account' : 'Welcome back'}</h2>
-            <p className="anim-in">{isSignup ? 'Free forever. Start solving in under a minute.' : 'Sign in to pick up where you left off.'}</p>
+          <div className="auth-title" key={sentTo ? 'sent' : mode}>
+            <h2 className="anim-in">{sentTo ? 'Confirm your email' : isSignup ? 'Create your account' : 'Welcome back'}</h2>
+            <p className="anim-in">
+              {sentTo ? 'One more step and your account is ready.' : isSignup ? 'Free forever. Start solving in under a minute.' : 'Sign in to pick up where you left off.'}
+            </p>
           </div>
+
+          {sentTo ? (
+            <div className="sent anim-up" role="status">
+              <span className="sent-icon">
+                <Icon name="mail" size={22} />
+              </span>
+              <p>
+                We sent a confirmation link to <strong>{sentTo}</strong>. Open it to finish creating your account. It signs you in
+                automatically.
+              </p>
+              {formError && (
+                <p className="form-msg form-msg-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <div className="sent-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => resendEmail(sentTo)} disabled={resend !== 'idle'}>
+                  {resend === 'sending' ? <span className="spinner spinner-lg" /> : <Icon name="mail" size={14} />}
+                  {resend === 'sent' ? 'Sent again' : 'Resend email'}
+                </button>
+                <Link to="/login" replace className="btn-text link-sm" onClick={() => setSentTo(null)}>
+                  Back to sign in
+                </Link>
+              </div>
+              <p className="fine">No email after a few minutes? Check your spam folder, or make sure the address is spelled correctly.</p>
+            </div>
+          ) : (
+            <>
 
           <div className="seg" role="tablist" aria-label="Account">
             <span className="seg-indicator" style={{ transform: isSignup ? 'translateX(100%)' : 'translateX(0)' }} aria-hidden="true" />
@@ -214,7 +306,11 @@ export function AuthPage({ mode }: { mode: Mode }) {
                   autoComplete="username"
                   placeholder="ada_lovelace"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (errors.username) setErrors((er) => ({ ...er, username: undefined }));
+                  }}
+                  onBlur={checkUsername}
                   {...fieldProps('username')}
                 />
                 {errors.username && (
@@ -253,17 +349,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
                   Password
                 </label>
                 {!isSignup && (
-                  <button
-                    type="button"
-                    className="btn-text link-sm"
-                    onClick={() =>
-                      setInfo(
-                        demoMode
-                          ? 'Password reset needs the Code+ server. In demo mode, create a new account or use the demo account.'
-                          : 'If an account uses that email, a reset link is on its way.',
-                      )
-                    }
-                  >
+                  <button type="button" className="btn-text link-sm" onClick={forgotPassword}>
                     Forgot password?
                   </button>
                 )}
@@ -315,9 +401,14 @@ export function AuthPage({ mode }: { mode: Mode }) {
             )}
 
             {formError && (
-              <p className="form-msg form-msg-error" role="alert">
-                {formError}
-              </p>
+              <div className="form-msg form-msg-error" role="alert">
+                <span>{formError}</span>
+                {unconfirmed && (
+                  <button type="button" className="btn-text link-sm" onClick={() => resendEmail(email)} disabled={resend !== 'idle'}>
+                    {resend === 'sent' ? 'Sent' : 'Resend link'}
+                  </button>
+                )}
+              </div>
             )}
             {info && (
               <p className="form-msg" role="status">
@@ -361,6 +452,8 @@ export function AuthPage({ mode }: { mode: Mode }) {
               {isSignup ? 'Sign in' : 'Create an account'}
             </Link>
           </p>
+            </>
+          )}
         </div>
       </main>
     </div>

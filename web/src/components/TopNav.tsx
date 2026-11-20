@@ -21,7 +21,7 @@ export function Avatar({ name, size = 30 }: { name: string; size?: number }) {
 }
 
 export function UserMenu() {
-  const { user, signOut, demoMode } = useAuth();
+  const { user, signOut, demoMode, backend } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -60,11 +60,19 @@ export function UserMenu() {
           <div className="user-head">
             <Avatar name={user.username} size={36} />
             <div className="user-meta">
-              <span className="user-name">{user.username}</span>
+              <span className="user-name">
+                {user.username}
+                {user.role === 'admin' && <span className="role-chip">Admin</span>}
+              </span>
               <span className="user-email">{user.email}</span>
             </div>
           </div>
           {demoMode && <p className="user-note">Demo mode: your account and submissions are stored in this browser only.</p>}
+          {backend === 'supabase' && (
+            <p className="user-note">
+              Signed in with {user.provider === 'github' ? 'GitHub' : user.provider === 'google' ? 'Google' : 'email and password'}.
+            </p>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -95,7 +103,7 @@ export function UserMenu() {
 }
 
 export function TopNav({ children }: { children?: ReactNode }) {
-  const { demoMode } = useAuth();
+  const { demoMode, canCreateProblems } = useAuth();
   return (
     <header className="topnav">
       <div className="topnav-inner">
@@ -104,9 +112,17 @@ export function TopNav({ children }: { children?: ReactNode }) {
           <NavLink to="/problems" end className="topnav-link">
             Problems
           </NavLink>
+          <NavLink to="/submit" className="topnav-link">
+            Submit
+          </NavLink>
           <NavLink to="/submissions" className="topnav-link">
             Submissions
           </NavLink>
+          {canCreateProblems && (
+            <NavLink to="/admin/problems/new" className="topnav-link">
+              Create
+            </NavLink>
+          )}
         </nav>
         <div className="topnav-right">
           {children}

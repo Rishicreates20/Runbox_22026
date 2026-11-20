@@ -295,29 +295,6 @@
   margin: 0;
   accent-color: var(--accent);
 }
-.form-msg {
-  display: flex;
-  gap: 10px;
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid #1f2a3a;
-  border-radius: 10px;
-  background: #0e141d;
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: #a9b6c8;
-  animation: fade-up 0.3s var(--ease) both;
-}
-.form-msg svg {
-  flex: none;
-  margin-top: 2px;
-  color: var(--info);
-}
-.form-msg-error {
-  border-color: rgba(248, 113, 113, 0.35);
-  background: rgba(248, 113, 113, 0.08);
-  color: #fca5a5;
-}
 .fine {
   margin: 0;
   font-size: 12px;
@@ -380,4 +357,65 @@
   .auth-stage {
     width: min(280px, 70%);
   }
+}
+
+.sent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+.sent-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sent p {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.sent strong {
+  color: var(--text);
+}
+.sent .fine {
+  text-align: left;
+}
+.sent-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.form-msg-error .btn-text {
+  margin-left: auto;
+  flex: none;
+}
+
+.reset {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.reset .auth-card {
+  gap: 28px;
+}
+.reset-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.025em;
 }
