@@ -1,6 +1,6 @@
 # Code+ web
 
-The React frontend for the Code+ online judge. Submissions are judged by [`runbox`](../README.md), the sandbox in this repo.
+The React frontend for the Code+ online judge. Submissions are judged by [`runbox`](../docs/runbox.md), the sandbox in this repo.
 
 ```bash
 cd web

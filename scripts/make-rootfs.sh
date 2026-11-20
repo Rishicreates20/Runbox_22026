@@ -1,34 +1,44 @@
 #!/usr/bin/env bash
 # Builds a minimal read-only lowerdir for runbox from the host's binaries.
-# Usage: make-rootfs.sh OUTDIR [--python /usr/bin/python3.X] [BINARY...]
+# Usage: make-rootfs.sh OUTDIR [--python /usr/bin/python3.X] [--gcc] [BINARY...]
 #
 # Copies each binary plus its shared-library closure (via ldd), the C/C++
 # runtime libs, and optionally a Python interpreter with its stdlib.
+# --gcc adds the host's gcc/g++ toolchain (driver, cc1/cc1plus, as, ld,
+# headers, crt files) so submissions can be compiled inside runbox too.
 # In production, build this once per language image (debootstrap, a
 # distroless tarball, etc.) and keep it read-only; runbox never writes to it.
 set -euo pipefail
 
 out=${1:?usage: make-rootfs.sh OUTDIR [--python PY] [BIN...]}; shift
 python=""
+gcc=0
 bins=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     --python) python=$2; shift 2 ;;
+    --gcc) gcc=1; shift ;;
     *) bins+=("$1"); shift ;;
   esac
 done
 
-mkdir -p "$out"/{bin,usr/bin,lib64,lib/x86_64-linux-gnu,etc,box,tmp,proc,dev}
+mkdir -p "$out"/{bin,usr/bin,usr/lib,lib64,lib/x86_64-linux-gnu,etc,box,tmp,proc,dev}
+# one multiarch lib dir, reachable by both names (as on merged-/usr hosts)
+[[ -e $out/usr/lib/x86_64-linux-gnu ]] || ln -s ../../lib/x86_64-linux-gnu "$out/usr/lib/x86_64-linux-gnu"
 chmod 1777 "$out/tmp"
 
+# Shared-library paths a binary needs. Static binaries make ldd list nothing
+# and grep exit 1, so that (and only that) is tolerated here.
+deps_of() { ldd "$1" 2>/dev/null | grep -oE '/[^ ]+' || true; }
+
 copy_with_libs() {
-  local f=$1 dst=${2:-$1}
+  local f=$1 dst=${2:-$1} lib
   mkdir -p "$out$(dirname "$dst")"
   cp -L "$f" "$out$dst"
-  ldd "$f" 2>/dev/null | grep -oE '/[^ ]+' | while read -r lib; do
-    [[ -e $lib ]] || continue
+  for lib in $(deps_of "$f"); do
+    [[ -e $lib && ! -e $out$lib ]] || continue
     mkdir -p "$out$(dirname "$lib")"
-    cp -L --update=none "$lib" "$out$lib" 2>/dev/null || true
+    cp -L "$lib" "$out$lib"     # a failed copy now aborts the build (set -e)
   done
 }
 
@@ -42,6 +52,34 @@ for lib in libstdc++.so.6 libgcc_s.so.1 libm.so.6; do
   [[ -n ${p:-} ]] && { mkdir -p "$out$(dirname "$p")"; cp -L --update=none "$p" "$out$p"; }
 done
 
+libs_of() {
+  local lib
+  for lib in $(deps_of "$1"); do
+    if [[ -e $lib && ! -e $out$lib ]]; then mkdir -p "$out$(dirname "$lib")"; cp -L "$lib" "$out$lib"; fi
+  done
+}
+
+if (( gcc )); then
+  for b in gcc g++ cc c++ as ld ld.bfd; do
+    p=$(command -v "$b") || continue
+    copy_with_libs "$(readlink -f "$p")"
+    cp -L "$p" "$out/usr/bin/$b"
+  done
+  libexec=$(dirname "$(gcc -print-prog-name=cc1)")
+  mkdir -p "$out$libexec"
+  cp -a "$libexec/." "$out$libexec/"
+  for f in "$out$libexec"/*; do if [[ -f $f ]]; then libs_of "$f"; fi; done
+  cp -a /usr/lib/gcc "$out/usr/lib/"
+  cp -a /usr/include "$out/usr/"
+  ml=/usr/lib/x86_64-linux-gnu
+  for f in crt1.o crti.o crtn.o Scrt1.o rcrt1.o libc.so libc_nonshared.a libc.a \
+           libm.so libm.a libmvec.so libmvec.a libmvec.so.1 libpthread.a libdl.a librt.a \
+           libstdc++.so.6 libgcc_s.so.1; do
+    if [[ -e $ml/$f ]]; then cp -L "$ml/$f" "$out/lib/x86_64-linux-gnu/"; fi
+  done
+  echo "gcc $(gcc -dumpversion) installed"
+fi
+
 if [[ -n $python ]]; then
   ver=$("$python" -c 'import sys;print(f"{sys.version_info[0]}.{sys.version_info[1]}")')
   copy_with_libs "$python" /usr/bin/python3
@@ -52,9 +90,9 @@ if [[ -n $python ]]; then
       --exclude=site-packages --exclude=dist-packages --exclude=__pycache__ \
       --exclude=tkinter --exclude=ensurepip -cf - . | tar -C "$out$libdir" -xf -
   for so in "$out$libdir"/lib-dynload/*.so; do
-    ldd "$so" 2>/dev/null | grep -oE '/[^ ]+' | while read -r lib; do
-      [[ -e $lib && ! -e $out$lib ]] && { mkdir -p "$out$(dirname "$lib")"; cp -L "$lib" "$out$lib"; }
-    done
+    # Some extensions are statically linked: ldd prints no paths, grep exits 1,
+    # and pipefail would end the script. libs_of tolerates that.
+    libs_of "$so"
   done
   echo "python $ver installed at /usr/bin/python3"
 fi
