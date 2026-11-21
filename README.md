@@ -85,7 +85,7 @@ Each layer is checked by [`tests/run_tests.py`](tests/run_tests.py). Internals, 
 
 ## Quick start
 
-**The app, in demo mode** (no accounts or backend needed; Node 20+):
+**The app, in demo mode** (no accounts or backend needed; Node 20.19+ or 22.12+):
 
 ```sh
 git clone https://github.com/Rishicreates20/Runbox_22026 codeplus && cd codeplus/web
