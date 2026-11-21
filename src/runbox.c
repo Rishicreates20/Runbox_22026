@@ -38,6 +38,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <linux/openat2.h>
 #include "runbox.h"
 
 /* Host ID range the sandbox's user namespace maps onto. In-sandbox root
@@ -70,6 +71,9 @@ struct opts {
     int nfiles;
     const char *file_src[MAX_FILES];
     const char *file_dst[MAX_FILES];
+    int nexports;
+    const char *export_src[MAX_FILES];
+    const char *export_dst[MAX_FILES];
     char **argv;
     int argc;
 };
@@ -440,6 +444,8 @@ static void usage(void)
 "  --stdin-b64 FILE     base64 stdin ('-' = read from runbox's stdin)\n"
 "  --stdin-b64-str STR  base64 stdin given inline\n"
 "  --file SRC:DST       copy host file SRC to DST inside the sandbox (repeatable)\n"
+"  --export SRC:DST     after a clean exit, copy sandbox file SRC (under /box)\n"
+"                       to host path DST (repeatable; regular files only)\n"
 "  --time MS            CPU time limit, ms (default 1000)\n"
 "  --wall MS            wall-clock limit, ms (default 3*time+1000)\n"
 "  --mem SIZE           memory limit, e.g. 256M (default 256M)\n"
@@ -460,6 +466,7 @@ static void parse_args(int argc, char **argv)
     static struct option lo[] = {
         { "rootfs", 1, 0, 'r' }, { "stdin-b64", 1, 0, 'i' },
         { "stdin-b64-str", 1, 0, 'I' }, { "file", 1, 0, 'f' },
+        { "export", 1, 0, 'x' },
         { "time", 1, 0, 't' }, { "wall", 1, 0, 'w' }, { "mem", 1, 0, 'm' },
         { "pids", 1, 0, 'p' }, { "output", 1, 0, 'o' }, { "stack", 1, 0, 's' },
         { "cwd", 1, 0, 'c' }, { "cgroup", 1, 0, 'g' },
@@ -479,6 +486,14 @@ static void parse_args(int argc, char **argv)
             *colon = 0;
             O.file_src[O.nfiles] = optarg;
             O.file_dst[O.nfiles++] = colon + 1;
+            break;
+        }
+        case 'x': {
+            char *colon = strchr(optarg, ':');
+            if (!colon || O.nexports >= MAX_FILES) usage();
+            *colon = 0;
+            O.export_src[O.nexports] = optarg;
+            O.export_dst[O.nexports++] = colon + 1;
             break;
         }
         case 't': O.time_ms = strtoull(optarg, NULL, 10); break;
@@ -566,6 +581,48 @@ static void copy_in(const char *src, const char *dst)
     fchown(out, HOST_ID_BASE + SANDBOX_UID, HOST_ID_BASE + SANDBOX_GID);
     close(in);
     close(out);
+}
+
+/* Copy a file the program produced (e.g. a compiled binary) out of the
+ * per-job upperdir. The upperdir is attacker-controlled, so resolution is
+ * done with openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_XDEV)
+ * from the upperdir: no symlink, ".." or mount crossing can point the copy
+ * at a host file. Only regular files, capped at --output bytes. */
+static int copy_out(const char *src, const char *dst, char *err, size_t errlen)
+{
+    if (src[0] != '/' || strstr(src, "..")) {
+        snprintf(err, errlen, "export source must be absolute: %s", src);
+        return -1;
+    }
+    int root = open(upper_dir, O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (root < 0) { snprintf(err, errlen, "open upperdir: %s", strerror(errno)); return -1; }
+    struct open_how how = {
+        .flags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK,
+        .resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV |
+                   RESOLVE_NO_MAGICLINKS,
+    };
+    int in = (int)syscall(SYS_openat2, root, src + 1, &how, sizeof how);
+    close(root);
+    if (in < 0) { snprintf(err, errlen, "export %s: %s", src, strerror(errno)); return -1; }
+    struct stat st;
+    if (fstat(in, &st) < 0 || !S_ISREG(st.st_mode) || (uint64_t)st.st_size > O.output_bytes) {
+        snprintf(err, errlen, "export %s: not a regular file or too large", src);
+        close(in);
+        return -1;
+    }
+    int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0755);
+    if (out < 0) { snprintf(err, errlen, "create %s: %s", dst, strerror(errno)); close(in); return -1; }
+    char buf[65536];
+    ssize_t r;
+    int rc = 0;
+    while ((r = read(in, buf, sizeof buf)) > 0)
+        if (write_all(out, buf, (size_t)r) < 0) { rc = -1; break; }
+    if (r < 0) rc = -1;
+    if (rc) snprintf(err, errlen, "export %s: %s", src, strerror(errno));
+    fchmod(out, 0755);
+    close(in);
+    close(out);
+    return rc;
 }
 
 static void prepare_job_dir(void)
@@ -795,6 +852,14 @@ int main(int argc, char **argv)
         verdict = "OK";
     }
 
+    int exported = 0;
+    if (!strcmp(verdict, "OK") && O.nexports > 0) {
+        exported = 1;
+        for (int i = 0; i < O.nexports && exported; i++)
+            if (copy_out(O.export_src[i], O.export_dst[i], detail, sizeof detail) < 0)
+                exported = 0;
+    }
+
     size_t out_len, err_len;
     int out_trunc, err_trunc;
     char *out = read_output(stdout_fd, O.output_bytes, &out_len, &out_trunc);
@@ -808,11 +873,12 @@ int main(int argc, char **argv)
     if (sig) json_str(stdout, signame(sig)); else printf("null");
     printf(",\"cpu_time_ms\":%.3f,\"wall_time_ms\":%llu,\"memory_kb\":%lld,"
            "\"cgroup\":\"%s\",\"stdout_b64\":\"%s\",\"stdout_truncated\":%s,"
-           "\"stderr_b64\":\"%s\"}\n",
+           "\"stderr_b64\":\"%s\",\"exported\":%s}\n",
            cpu_used / 1000.0, (unsigned long long)wall,
            mem_peak >= 0 ? (long long)(mem_peak / 1024) : -1LL,
            cg_mode_name(cg_used),
-           out64, out_trunc ? "true" : "false", err64);
+           out64, out_trunc ? "true" : "false", err64,
+           exported ? "true" : "false");
     fflush(stdout);
 
     cleanup_job_dir();

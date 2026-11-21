@@ -1,0 +1,11 @@
+.git
+**/node_modules
+web/dist
+web/dist-static
+runbox
+tests/build
+docs
+*.md
+!web/README.md
+.env*
+!web/.env.example

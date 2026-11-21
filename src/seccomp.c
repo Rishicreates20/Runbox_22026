@@ -43,6 +43,7 @@ static const int allow_list[] = {
     SYS_unlink, SYS_unlinkat, SYS_mkdir, SYS_mkdirat, SYS_rename,
     SYS_renameat, SYS_ftruncate, SYS_fsync, SYS_fdatasync, SYS_statfs,
     SYS_fstatfs, SYS_umask, SYS_fadvise64,
+    SYS_chmod, SYS_fchmod, SYS_fchmodat,  /* linkers mark output executable */
     /* memory */
     SYS_brk, SYS_mmap, SYS_munmap, SYS_mremap, SYS_mprotect, SYS_madvise,
     SYS_membarrier,
