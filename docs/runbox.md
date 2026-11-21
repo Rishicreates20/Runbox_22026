@@ -25,7 +25,8 @@ runbox --rootfs DIR [options] -- PROGRAM [ARGS...]
   --wall MS            wall-clock limit, ms (default 3*time+1000)
   --mem SIZE           memory limit, e.g. 256M (default 256M)
   --pids N             max tasks (default 64)
-  --output SIZE        max bytes per output stream (default 16M)
+  --output SIZE        max bytes per output stream, and per file written (RLIMIT_FSIZE),
+                       so it also caps compiled binaries and --export (default 16M)
   --stack SIZE         stack limit (default = --mem)
   --cwd DIR            working directory inside the sandbox (default /box)
   --cgroup auto|v2|v1  cgroup mode (default auto: v2, else v1)
