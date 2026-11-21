@@ -73,7 +73,7 @@ The app is a static site, so it can be hosted anywhere (Vercel, nginx, any CDN).
 
 | layer | what it stops |
 |---|---|
-| **User namespace** | Sandbox uid 0–65535 maps to host 100000–165535. The program runs as an unmapped user with no capabilities anywhere on the host. |
+| **User namespace** | Sandbox uid 0–65535 maps to host 100000–165535. The program runs as sandbox uid 65534 (an unprivileged host uid, 165534) with no capabilities anywhere on the host. |
 | **Mount namespace + OverlayFS + `pivot_root`** | The program sees only a read-only language image plus a throwaway upper layer. The host root is detached, and the upper layer is deleted after every job. |
 | **PID, IPC, UTS namespaces** | The program can't see or signal other processes. It is PID 2 in its own namespace. |
 | **Network namespace + seccomp** | Only a downed loopback interface exists, and `socket()` returns `EACCES`. |
